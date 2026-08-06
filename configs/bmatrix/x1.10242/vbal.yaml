@@ -1,0 +1,88 @@
+# =============================================================================
+# MPAS-BMatrix scientific contract — VBAL calibration
+# =============================================================================
+#
+# Purpose
+# -------
+# Configures BUMP_VerticalBalance calibration. VBAL estimates the K2 balance
+# transform that relates selected balanced variables to streamfunction.
+#
+# Rebuild boundary
+# ----------------
+# Changes require rerunning VBAL and every downstream stage:
+# UNBALANCE, HDIAG, NICAS, SO, DIRAC and PLOTS.
+#
+# How to modify it
+# ----------------
+# - Variable names may use canonical `code` names or physical `file` names from
+#   controls.yaml; the renderer normalizes them.
+# - Keep group_variable_order complete, unique and scientifically intentional.
+# - Relations define the multivariate balance model and need scientific review.
+# - Sampling values affect statistical robustness, memory and runtime.
+# =============================================================================
+
+vbal:
+  # Prefix used by BUMP when writing global/local VBAL and sampling files.
+  files_prefix: mpas
+
+  # Ordered controls used to build VBAL covariance groups and compound aliases.
+  # Reordering changes group names in mpas_vbal.nc and therefore invalidates
+  # existing products even when the variables themselves are unchanged.
+  group_variable_order:
+    - air_horizontal_streamfunction
+    - water_vapor_mixing_ratio_wrt_moist_air
+    - air_horizontal_velocity_potential
+    - air_temperature
+    - air_pressure_at_surface
+
+  drivers:
+    # Write rank-local sampling products consumed later when applying VBAL.
+    write_local_sampling: true
+
+    # Write the global sampling product used for provenance/diagnostics.
+    write_global_sampling: true
+
+    # Estimate vertical covariance matrices needed by the balance regression.
+    compute_vertical_covariance: true
+
+    # Compute the configured vertical-balance relations.
+    compute_vertical_balance: true
+
+    # Persist the calibrated vertical-balance coefficients.
+    write_vertical_balance: true
+
+  sampling:
+    # Number of points used by the main BUMP computation grid.
+    computation grid size: 12000
+
+    # Number of points retained on the diagnostic grid.
+    diagnostic grid size: 200
+
+    # Number of reduced vertical levels used by the sampling diagnostics.
+    # The validated x1.10242 configuration keeps all 55 model levels.
+    reduced levels: 55
+
+    # Latitude-band width in degrees used for horizontal averaging.
+    averaging latitude width: 10.0
+
+  relations:
+    # Divergent wind balanced with rotational wind. Diagonal regression limits
+    # the regression structure to same-level terms for this relation.
+    - balanced_variable: air_horizontal_velocity_potential
+      unbalanced_variable: air_horizontal_streamfunction
+      diagonal_regression: true
+
+    # Temperature component statistically balanced with streamfunction.
+    - balanced_variable: air_temperature
+      unbalanced_variable: air_horizontal_streamfunction
+
+    # Surface-pressure component statistically balanced with streamfunction.
+    - balanced_variable: air_pressure_at_surface
+      unbalanced_variable: air_horizontal_streamfunction
+
+  # Use a pseudo-inverse when solving the vertical regression system. Keep true
+  # for potentially rank-deficient covariance matrices.
+  pseudo_inverse: true
+
+  # Number of dominant vertical modes retained by the balance model.
+  dominant_mode: 20
