@@ -1,138 +1,98 @@
-# MPAS B-Matrix Global — guia da arquitetura refatorada
+# Documentation index
 
-O pacote possui **um único comando público**:
+This directory documents `MPAS-BMatrix`, the official MPAS-JEDI/SABER/BUMP
+static B-matrix workflow repository.
 
-```bash
-mpas-bmatrix --help
-```
-
-Ele recebe pares NMC já produzidos, prepara as amostras BFLOW e executa, na
-ordem de dependência, as etapas `VBAL`, `UNBALANCE`, `HDIAG`, `NICAS`, `SO` e
-`DIRAC`.
-
-## Limite explícito de escopo
-
-A geração de GFS/WPS, `init_atmosphere` e forecasts MPAS não faz parte deste
-pacote. Eles são produtores externos dos pares NMC. Esta decisão evita misturar
-pré-processamento meteorológico e calibração da matriz B no mesmo componente.
-
-## Comandos
-
-```bash
-# Verificar o YAML resolvido e as regras estruturais.
-mpas-bmatrix check-config --config configs/jaci-x1.10242.yaml
-
-# Planejar sem criar arquivos, importar NetCDF ou submeter jobs.
-mpas-bmatrix build \
-  --config configs/jaci-x1.10242.yaml \
-  --start-valid-time 2026-06-10_00:00:00 \
-  --end-valid-time 2026-06-13_00:00:00 \
-  --dry-run
-
-# Criar os pesos ESMPy necessários pelo BFLOW.
-mpas-bmatrix weights \
-  --config configs/jaci-x1.10242.yaml \
-  --start-valid-time 2026-06-10_00:00:00 \
-  --end-valid-time 2026-06-13_00:00:00
-
-# Executar o pipeline completo.
-mpas-bmatrix build \
-  --config configs/jaci-x1.10242.yaml \
-  --manifest /caminho/para/pares-nmc.tsv
-```
-
-## ESMPy para pesos ESMF
-
-A geração de pesos é uma biblioteca interna (`bmatrix.esmf_weights`), baseada
-no código ESMF fornecido ao projeto. Ela usa ESMPy diretamente e não depende de
-NCL, SCRIP nem de outro executável de pesos.
-
-O bloco `bflow.regridding` contém a única fonte de configuração de malha e de
-interpolação. Os pesos são gravados em `<BFLOW>/ESMF_weights/` e registrados no
-manifesto do estágio.
-
-## Produtos da matriz B
-
-Produtos necessários para leitura da B pelo MPAS-JEDI/SABER:
+The documentation is intentionally separated by audience:
 
 ```text
-VBAL/VBAL:
-  mpas_vbal.nc
-  mpas_sampling.nc
-  mpas_vbal_local_*
-  mpas_sampling_local_*
+User/operator docs
+  how to run, what to provide, what each stage produces and how to validate
 
-UNBALANCE/samplesUnbalanced:
-  PTB_f48mf24_*.nc
-
-HDIAG/HDIAG:
-  mpas.stddev.nc
-  mpas.cor_rh.nc
-  mpas.cor_rv.nc
-
-NICAS/merge:
-  mpas_nicas.nc
-  mpas_nicas_local_*
-  mpas_nicas_grids_local_*
+Scientific/developer docs
+  theory, contracts, architecture, tests and extension rules
 ```
 
-Os arquivos NICAS locais preservam a dimensionalidade vertical de cada grupo.
-No x1.10242, `stream_function`, `velocity_potential`, `temperature` e
-`spechum` sao grupos 3D com `nl0 = 55`, enquanto `surface_pressure` e 2D e
-usa `nl0 = 1`. Por isso, os YAMLs de SO e DIRAC declaram `read.grids` no bloco
-`BUMP_NICAS`: uma grade para as quatro variaveis 3D e outra grade contendo
-somente `surface_pressure`. Sem essa separacao, o leitor local do BUMP usa a
-geometria 3D efetiva para todos os grupos e aborta com `wrong size for
-dimension nl0` ao chegar em `surface_pressure`.
+## User/operator documentation
 
-Produtos de diagnóstico produzidos ou preservados:
+Read these when your goal is to run the pipeline or inspect products.
+
+| Document | Purpose |
+| --- | --- |
+| [`user-guide.md`](user-guide.md) | Main user guide: installation, quick start, stage-by-stage execution and acceptance checks. |
+| [`jaci-quickstart.md`](jaci-quickstart.md) | Compact JACI-oriented command sequence. |
+| [`stage-products.md`](stage-products.md) | Inputs, outputs and acceptance criteria for each stage. |
+| [`mpaswf-pairs.md`](mpaswf-pairs.md) | How to generate f024/f048 MPAS NMC forecast pairs and the manifest with `mpaswf`. |
+| [`operations.md`](operations.md) | Troubleshooting, validation commands and operational notes. |
+| [`diagnostics-and-plots.md`](diagnostics-and-plots.md) | Plot products, visual diagnostics and style conventions. |
+
+## Scientific/developer documentation
+
+Read these when your goal is to change code, modify the scientific contract or
+understand how the implementation works.
+
+| Document | Purpose |
+| --- | --- |
+| [`bmatrix-theory.md`](bmatrix-theory.md) | Scientific meaning of the B-matrix and each workflow stage, including explicit UNBALANCE. |
+| [`scientific-contract.md`](scientific-contract.md) | Variable names, aliases, SABER/BUMP blocks, `Control2Analysis`, UNBALANCE and DIRAC invariants. |
+| [`developer-guide.md`](developer-guide.md) | Developer workflow, extension rules, rebuild rules and PR expectations. |
+| [`architecture.md`](architecture.md) | Internal module architecture, configuration layers and stage lifecycle. |
+| [`testing.md`](testing.md) | Unit, integration and JACI smoke testing strategy. |
+| [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | Top-level contribution checklist. |
+| [`refactoring.md`](refactoring.md) | Historical notes from the refactored architecture. |
+
+## Scope
+
+The full operational order is:
 
 ```text
-NICAS/merge/mpas.nicas_norm.nc
-NICAS/merge/mpas.dirac_nicas.nc
-DIRAC/mpas.dirac.nc
-SO/obsout_SO_*.h5
-SO/an.*.nc
+mpaswf -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
-A composicao `StdDev + NICAS + VBAL + Control2Analysis` opera, em SO e
-DIRAC, no espaço canônico do JEDI/OOPS. Esses nomes canônicos não são campos
-de stream MPAS. O stream MPAS valida nomes contra o Registry e rejeita, por
-exemplo, `eastward_wind` quando usado em `stream_list.atmosphere.analysis`.
-Por isso `SO/an.*.nc` permanece MPAS-nativo; ele serve para confirmar que a
-aplicação variacional escreveu um estado MPAS válido, enquanto a resposta
-canônica deve ser diagnosticada no log/OOPS ou por uma saída diagnóstica
-dedicada futura.
+`mpaswf` is external and produces the forecast-pair manifest. This repository
+owns the stages starting at BFLOW:
 
-Nos aliases, `in code` e o nome interno esperado pelo MPAS-JEDI/SABER/OOPS
-novo, e `in file` e o nome existente nos produtos NetCDF da B. O alias
-`in code`/`in file` vale para JEDI/SABER/BUMP lendo esses produtos; ele nao
-traduz nomes para o parser de streams do MPAS. Por isso SO/DIRAC reutilizam os
-arquivos `streams.atmosphere_240km` e `stream_list.atmosphere.*` compatíveis
-com a física, packages e Registry da configuração original. Nao se deve criar
-manualmente uma lista mínima de campos de análise sem validá-la contra o parser
-MPAS; mesmo campos MPAS nativos podem ser rejeitados nessa combinação. Um
-diagnostico numerico da resposta canonica deve ser implementado separadamente
-no futuro, por exemplo por saida diagnostica JEDI/FieldSet ou outro mecanismo
-especifico.
+```text
+BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
+```
 
-A etapa DIRAC gera `mpas.dirac.nc` usando os parâmetros de impulso
-declarados em `dirac` e a mesma B completa validada por SO.
+The repository does not own GFS download, WPS/ungrib, MPAS initialization or
+forecast integration. In the current operational chain those upstream products
+are generated with `mpaswf`, then passed into `MPAS-BMatrix` as NMC pairs or an
+already prepared BFLOW workspace.
 
-## UNBALANCE e K2
+## Recommended checkout layout
 
-VBAL estima os coeficientes usados pela transformação vertical `K2`. A etapa
-UNBALANCE aplica `K2^-1` com `mpasjedi_unbalance_ensemble.x`, lendo os membros
-centrados em `samples` e escrevendo `samplesUnbalanced` em CDF5. HDIAG não usa
-PTBs brutos; ele consome exclusivamente esses membros no espaço
-desbalanceado.
+Use generic roots and adapt only the exports to your system:
 
-O tutorial NCAR usa `samplesUnbalanced` como contrato de entrada para HDIAG,
-mas não expõe no fluxo público uma etapa reprodutível para escrever esses
-arquivos. Esta implementação torna a escrita explícita, registra o executável
-no manifesto e bloqueia HDIAG se os quatro membros CDF5 esperados estiverem
-ausentes ou inválidos.
+```bash
+export PROJECT_ROOT=/path/to/projects
+export WORK_ROOT=/path/to/work/MPAS-BMatrix
 
-O round-trip `K2(K2^-1(PTB_i - mean(PTB)))` foi validado contra
-`PTB_i - mean(PTB)` para os quatro membros e as variáveis `stream_function`,
-`spechum`, `velocity_potential`, `temperature` e `surface_pressure`.
+mkdir -p "$PROJECT_ROOT" "$WORK_ROOT"
+cd "$PROJECT_ROOT"
+
+git clone https://github.com/joaogerd/MPAS-BMatrix.git
+git clone https://github.com/joaogerd/mpaswf.git
+
+export BMATRIX_ROOT="$PROJECT_ROOT/MPAS-BMatrix"
+export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
+```
+
+## Current validated case
+
+The documentation assumes the global MPAS tutorial mesh and the scientific
+contract declared in:
+
+```text
+configs/jaci-x1.10242.yaml
+configs/bmatrix-x1.10242.yaml
+```
+
+A typical BFLOW workspace path follows this pattern:
+
+```text
+$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>
+```
+
+Use the same stage contract when comparing outputs or debugging regressions.

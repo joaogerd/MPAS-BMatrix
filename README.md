@@ -1,229 +1,153 @@
 # MPAS-BMatrix
 
-Geração dos produtos de uma matriz B estática MPAS-JEDI/SABER a partir de pares
-NMC já existentes. A ferramenta possui **um único executável público**:
+`MPAS-BMatrix` is the official Python orchestration repository for building,
+validating and diagnosing static MPAS-JEDI/SABER/BUMP background-error
+covariance products for a global MPAS workflow.
+
+The package exposes one public command:
 
 ```bash
 mpas-bmatrix
 ```
 
-O escopo começa no BFLOW: previsões MPAS f024/f048 e seus pares de mesmo tempo
-válido são entradas externas. WPS, download de GFS, `init_atmosphere` e forecast
-não são responsabilidade deste pacote.
+## Scope
 
-## Produtos científicos
-
-A matriz B reutilizável é um conjunto de produtos, não um NetCDF único:
-
-```text
-BFLOW  -> FULL_f24.nc, FULL_f48.nc, PTB_f48mf24.nc
-VBAL   -> mpas_vbal.nc, mpas_sampling.nc e produtos locais
-UNBALANCE -> samplesUnbalanced/PTB_f48mf24_*.nc
-HDIAG  -> mpas.stddev.nc, mpas.cor_rh.nc, mpas.cor_rv.nc
-NICAS  -> mpas_nicas.nc, mpas_nicas_local_*, mpas_nicas_grids_local_*,
-          mpas.nicas_norm.nc e mpas.dirac_nicas.nc
-SO     -> an.*.nc e obsout_SO_*.h5 (validação com assimilação)
-DIRAC  -> mpas.dirac.nc (resposta da B completa a um impulso)
-PLOTS  -> summary.csv, README.md e figuras PNG de diagnóstico
-```
-
-A configuração e o layout dos produtos correspondem ao contrato científico
-do projeto. DIRAC é renderizado a partir dos parâmetros declarados em `dirac` e
-usa a mesma composição SABER de NICAS + StdDev + VBAL + Control2Analysis.
-
-Na leitura local de `BUMP_NICAS`, SO e DIRAC separam explicitamente as grades
-por dimensionalidade vertical: `stream_function`, `velocity_potential`,
-`temperature` e `spechum` ficam na grade 3D, enquanto `surface_pressure` fica
-sozinha na grade 2D. O produto NICAS merge continua contendo todos os grupos,
-mas essa divisão evita que o BUMP aplique `nl0=55` ao grupo `surface_pressure`,
-que e gravado com `nl0=1`.
-
-SO e DIRAC aplicam `Control2Analysis` no espaço canônico interno do JEDI/OOPS
-(`eastward_wind`, `northward_wind`, `air_temperature`,
-`water_vapor_mixing_ratio_wrt_moist_air`, `air_pressure_at_surface`). O stream
-MPAS, porém, grava apenas variáveis registradas no MPAS Registry. Assim,
-`SO/an.*.nc` é uma saída MPAS-nativa (`uReconstruct*`, `theta`, `qv`,
-`surface_pressure`, etc.), não um arquivo no espaço canônico JEDI. A resposta
-canônica do SO deve ser conferida no log/OOPS ou por uma futura saída
-diagnóstica dedicada, não pelo stream MPAS padrão.
-
-Nos blocos de alias, `in code` é o nome esperado internamente pelo código
-novo MPAS-JEDI/SABER/OOPS, enquanto `in file` é o nome gravado nos produtos
-NetCDF da B. Esse alias é consumido por JEDI/SABER/BUMP ao ler os produtos da
-B; ele não é aplicado pelo parser de streams do MPAS. Portanto,
-SO e DIRAC reutilizam os arquivos `streams.atmosphere_240km` e
-`stream_list.atmosphere.*` compatíveis com a física, packages e Registry da
-configuração original. Não se deve criar manualmente uma lista mínima de campos
-de análise sem validá-la contra o parser MPAS; mesmo campos MPAS nativos podem
-ser rejeitados nessa combinação. O diagnóstico numérico da resposta canônica
-deve ser uma etapa futura separada, por exemplo via saída diagnóstica
-JEDI/FieldSet ou mecanismo específico.
-
-## Etapa UNBALANCE
-
-O fluxo científico é:
+The repository starts at the **BFLOW** boundary. It assumes that MPAS forecasts
+and same-valid-time NMC pairs already exist. In the current workflow, those
+upstream pairs are generated with the external [`mpaswf`](https://github.com/joaogerd/mpaswf)
+workflow.
 
 ```text
-BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
+mpaswf -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
-VBAL calibra os coeficientes da transformação vertical `K2`. UNBALANCE aplica
-`K2^-1` aos PTBs centrados por meio de `mpasjedi_unbalance_ensemble.x` e grava
-`samplesUnbalanced`. Esses arquivos não são os PTBs brutos: são anomalias
-centradas no espaço desbalanceado, usadas como entrada exclusiva do HDIAG.
+`mpaswf` owns GFS/WPS, MPAS initialization, MPAS forecasts and the forecast-pair
+manifest. `MPAS-BMatrix` owns the covariance product contract, SABER/BUMP YAML
+rendering, PBS orchestration, validation and diagnostics from BFLOW onward.
 
-O tutorial NCAR declara `samplesUnbalanced` como entrada do HDIAG, mas o fluxo
-público atual não fornece uma escrita reproduzível desses membros. Por isso a
-aplicação de `K2^-1` é uma etapa explícita, com PBS, manifesto e validação de
-CDF5. A reversibilidade foi verificada numericamente por round-trip:
-`K2(K2^-1(PTB_i - mean(PTB))) ~= PTB_i - mean(PTB)` para os quatro membros e
-as cinco variáveis de controle.
+## What the B-matrix represents
 
-## Etapa PLOTS
+In variational data assimilation, the background-error covariance matrix `B`
+controls how observational information spreads horizontally, vertically, between
+variables and with statistically estimated amplitude.
 
-`PLOTS` é uma etapa local de pós-processamento. Ela não submete PBS e não altera
-os produtos científicos; apenas lê os NetCDF finais, gera `summary.csv`, um
-`README.md` de proveniência e figuras PNG simples.
-
-A saída padrão é determinística a partir do workspace BFLOW:
+In MPAS-JEDI/SABER, the static B is represented by operators and files rather
+than by one dense matrix:
 
 ```text
-${work_root}/bmatrix/plots/<RUN_ID>/
+B ≈ C2A · VBAL · StdDev · NICAS · StdDev · VBALᵀ · C2Aᵀ
 ```
 
-A plotagem usa `lonCell`/`latCell` quando essas coordenadas estão disponíveis e
-cai para gráficos por índice quando o produto não contém coordenadas de malha.
-Assim, a etapa funciona sem Cartopy; `matplotlib` é a única dependência
-diagnóstica adicional.
+`UNBALANCE` is intentionally explicit in this repository: VBAL calibrates the
+balance transform, UNBALANCE writes the unbalanced training members, and HDIAG
+uses those members for the statistics.
 
-## Instalação
+## Quick start
+
+Use a project area and a separate work area. Adapt only the exported roots:
 
 ```bash
-python -m pip install -e .
-# geração de pesos e transformação psi/chi exigem dependências compiladas:
-conda install -c conda-forge esmpy windspharm pyspharm
-# plotagem diagnóstica:
-python -m pip install -e ".[diagnostics]"
+export PROJECT_ROOT=/path/to/projects
+export WORK_ROOT=/path/to/work/MPAS-BMatrix
+
+mkdir -p "$PROJECT_ROOT" "$WORK_ROOT"
+cd "$PROJECT_ROOT"
+
+git clone https://github.com/joaogerd/MPAS-BMatrix.git
+git clone https://github.com/joaogerd/mpaswf.git
+
+export BMATRIX_ROOT="$PROJECT_ROOT/MPAS-BMatrix"
+export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
 ```
 
-## Uso
-
-Valide a configuração mesclada:
+Install both repositories in the active Python environment:
 
 ```bash
-mpas-bmatrix check-config --config configs/jaci-x1.10242.yaml
+python -m pip install --no-deps -e "$MPASWF_ROOT"
+python -m pip install -e "$BMATRIX_ROOT"
 ```
 
-Mostre o plano sem criar arquivos ou submeter PBS:
+On JACI, load the MPAS-JEDI runtime:
 
 ```bash
-mpas-bmatrix build \
-  --config configs/jaci-x1.10242.yaml \
-  --manifest /dados/nmc/manifest.tsv \
-  --dry-run
+cd "$BMATRIX_ROOT"
+export STACK_ROOT=/path/to/spack-stack
+source scripts/load_jaci_env.sh
 ```
 
-Execute a construção completa, esperando cada dependência PBS terminar antes da
-etapa seguinte:
+Run from an existing BFLOW workspace:
 
 ```bash
-mpas-bmatrix build \
-  --config configs/jaci-x1.10242.yaml \
-  --manifest /dados/nmc/manifest.tsv \
+cd "$BMATRIX_ROOT"
+
+CONFIG=configs/jaci-x1.10242.yaml
+BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
+
+PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+  --config "$CONFIG" \
+  --bflow-workspace "$BFLOW" \
+  --to-stage plots \
+  --plot-level 30 \
+  --plot-dpi 150 \
+  --clean \
   --poll-seconds 30
 ```
 
-Para produzir também a pós-plotagem no fim do fluxo:
+Run from a `mpaswf` forecast-pair manifest:
 
 ```bash
-mpas-bmatrix build \
-  --config configs/jaci-x1.10242.yaml \
-  --manifest /dados/nmc/manifest.tsv \
+MANIFEST=/path/to/mpaswf-work/products/mpas-forecast-manifest.tsv
+
+PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+  --config "$CONFIG" \
+  --manifest "$MANIFEST" \
+  --from-stage bflow \
   --to-stage plots \
-  --plot-level 30
-```
-
-Para produzir somente a B reutilizável, sem o teste SO:
-
-```bash
-mpas-bmatrix build \
-  --config configs/jaci-x1.10242.yaml \
-  --manifest /dados/nmc/manifest.tsv \
-  --to-stage nicas
-```
-
-Executar apenas a aplicação de `K2^-1` a partir de um workspace BFLOW já
-preparado e com VBAL validado:
-
-```bash
-mpas-bmatrix build \
-  --config configs/jaci-x1.10242.yaml \
-  --bflow-workspace /caminho/para/workspace-bflow \
-  --from-stage unbalance \
-  --to-stage unbalance
-```
-
-Executar UNBALANCE seguido de HDIAG:
-
-```bash
-mpas-bmatrix build \
-  --config configs/jaci-x1.10242.yaml \
-  --bflow-workspace /caminho/para/workspace-bflow \
-  --from-stage unbalance \
-  --to-stage hdiag
-```
-
-Gerar apenas figuras e resumos a partir de produtos já concluídos:
-
-```bash
-mpas-bmatrix plots \
-  --config configs/jaci-x1.10242.yaml \
-  --bflow-workspace /caminho/para/workspace-bflow \
   --plot-level 30 \
-  --plot-dpi 150
+  --plot-dpi 150 \
+  --clean \
+  --poll-seconds 30
 ```
 
-## PBS progress display
+## Documentation map
 
-When the command is running in an interactive terminal, every PBS dependency is
-monitored with a compact colored braille spinner. The row shows the job ID,
-current PBS state, elapsed time, and time until the next `qstat` query.
+The documentation is separated by audience.
 
-```text
-⠹ PBS job 289521.pbs-ha: state R elapsed 02:14 next check in 18s
-```
+### User/operator documentation
 
-Finished jobs produce a persistent green confirmation before output validation.
-When stdout is redirected, the command writes periodic `[RUN]` lines instead of
-ANSI control characters, preserving readable logs.
+| Document | Purpose |
+| --- | --- |
+| [`docs/user-guide.md`](docs/user-guide.md) | Main execution guide: how to run, what to provide and how to validate. |
+| [`docs/jaci-quickstart.md`](docs/jaci-quickstart.md) | Compact JACI command sequence. |
+| [`docs/stage-products.md`](docs/stage-products.md) | Inputs, outputs and acceptance criteria for every stage. |
+| [`docs/mpaswf-pairs.md`](docs/mpaswf-pairs.md) | How to generate f024/f048 NMC forecast pairs with `mpaswf`. |
+| [`docs/operations.md`](docs/operations.md) | Troubleshooting, validation commands and operational notes. |
 
-Color follows terminal capability by default. Set one of the following values
-when needed:
+### Scientific/developer documentation
+
+| Document | Purpose |
+| --- | --- |
+| [`docs/bmatrix-theory.md`](docs/bmatrix-theory.md) | Scientific theory and meaning of each stage. |
+| [`docs/scientific-contract.md`](docs/scientific-contract.md) | Variable names, aliases, SABER/BUMP blocks and invariants. |
+| [`docs/developer-guide.md`](docs/developer-guide.md) | Developer workflow, extension rules and maintenance expectations. |
+| [`docs/architecture.md`](docs/architecture.md) | Internal module architecture and stage lifecycle. |
+| [`docs/testing.md`](docs/testing.md) | Unit, integration and JACI smoke testing guidance. |
+| [`docs/diagnostics-and-plots.md`](docs/diagnostics-and-plots.md) | Diagnostic plotting outputs and style conventions. |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Top-level contribution checklist. |
+
+## Development checks
+
+For documentation or code changes:
 
 ```bash
-MPAS_BMATRIX_COLOR=always mpas-bmatrix build ...
-MPAS_BMATRIX_COLOR=never mpas-bmatrix build ...
-NO_COLOR=1 mpas-bmatrix build ...
+cd "$BMATRIX_ROOT"
+mkdir -p .pytest-tmp
+
+TMPDIR="$BMATRIX_ROOT/.pytest-tmp" \
+PYTHONPATH="src:${PYTHONPATH:-}" \
+python -m pytest -p no:cacheprovider -q
+
+python -m ruff check src/bmatrix tests
+
+git diff --check
 ```
-
-The scheduler query cadence remains controlled by `--poll-seconds`; the spinner
-animates between queries and does not increase scheduler load.
-
-Os pesos ESMF são gerados por ESMPy integrado ao pacote; não há NCL, SCRIP ou
-outro executável de pesos. Cada workspace BFLOW grava
-`ESMF_weights/weights_manifest.json` com checksum e validação dos pesos.
-
-## Configuração
-
-- `configs/jaci-x1.10242.yaml`: plataforma, caminhos, MPI, PBS e executáveis.
-- `configs/bmatrix-x1.10242.yaml`: controles, BFLOW, VBAL, HDIAG, NICAS, SO e DIRAC.
-
-A configuração da plataforma referencia o contrato científico por
-`bmatrix.configuration`. Os mapas são combinados por *deep merge*; listas são
-atômicas para evitar concatenação científica acidental.
-
-## Proveniência
-
-Toda etapa preparada ou concluída grava `stage-manifest.json`. Os manifestos
-substituem o uso de README como contrato operacional e registram workspaces,
-entradas, saídas, membros e variantes.
