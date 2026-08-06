@@ -1,235 +1,270 @@
 # Software architecture
 
 This document describes the internal structure of `MPAS-BMatrix` for developers.
-It is not required reading for users who only need to run the workflow.
+Users who only need to run the workflow should start with
+[`user-guide.md`](user-guide.md).
 
 ## 1. Architectural principles
 
-The codebase follows four principles:
-
-1. **One public command**: the user entry point is `mpas-bmatrix`.
-2. **Sequential scientific stages**: the official stage order is explicit.
-3. **Stage-local implementation**: each stage owns its own preparation,
-   submission and validation logic.
-4. **Reusable contracts**: file names, variables, aliases and scientific
-   parameters come from configuration and shared helpers, not from ad hoc shell
-   scripts.
+1. **One public command:** `mpas-bmatrix`.
+2. **Explicit scientific order:** later stages may run only after their required
+   upstream products are valid.
+3. **Stage-local ownership:** each stage owns its preparation, execution and
+   validation logic.
+4. **Product contracts:** documented files and manifests connect stages.
+5. **Composed configuration:** site, mesh/case and scientific-stage settings are
+   maintained separately but resolved into one mapping before execution.
+6. **No hidden upstream workflow:** GFS/WPS/MPAS forecast generation belongs to
+   `mpaswf`; this repository starts at BFLOW.
 
 ## 2. Stage graph
 
-Official order:
-
 ```text
-BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
+External:
+  mpaswf -> forecast-pair manifest
+
+MPAS-BMatrix:
+  BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
-External upstream:
+The ordered stage tuple is defined in `src/bmatrix/pipeline.py`. The same module
+implements `--from-stage`, `--to-stage`, deterministic workspace resolution and
+sequential validation.
 
-```text
-mpaswf -> forecast-pair manifest -> BFLOW
-```
-
-`mpaswf` is not part of this package; it is the upstream MPAS forecast producer.
-
-## 3. Main modules
+## 3. Public interface
 
 ```text
 src/bmatrix/cli.py
 ```
 
-Defines the public command-line interface. The CLI should remain thin: it parses
-arguments, resolves configuration and delegates to the pipeline or stage modules.
+Responsibilities:
+
+- parse command-line options;
+- load the composed configuration;
+- create a `BuildRequest`;
+- delegate to pipeline or plotting functions;
+- convert known workflow errors into a nonzero exit status.
+
+Public subcommands:
+
+```text
+check-config
+weights
+build
+validate
+plots
+products
+```
+
+The CLI should remain thin. Scientific logic belongs in stage modules or shared
+scientific accessors.
+
+## 4. Configuration architecture
+
+The runnable x1.10242 case is composed as follows:
+
+```text
+configs/jaci.yaml
+  JACI site/runtime/build base
+        ↓ include
+configs/jaci-x1.10242.yaml
+  x1.10242 mesh/static case and bmatrix.configuration
+        ↓ reference
+configs/bmatrix-x1.10242.yaml
+  scientific-contract aggregator
+        ↓ include
+configs/bmatrix/x1.10242/*.yaml
+  control registry and one fragment per stage
+```
+
+Implementation:
+
+```text
+src/bmatrix/config.py
+```
+
+- reads YAML mappings;
+- resolves recursive `include` declarations;
+- rejects include cycles;
+- expands environment variables;
+- deep-merges mappings;
+- treats lists as atomic values;
+- loads `bmatrix.configuration` after composing the platform/case;
+- records platform and scientific source-file provenance.
+
+```text
+src/bmatrix/scientific_config.py
+```
+
+- validates stage sections and control definitions;
+- translates canonical JEDI names to NetCDF file names;
+- builds simple and compound aliases;
+- enforces 3D/2D NICAS grouping;
+- validates analysis/background variable coverage;
+- resolves BFLOW product names.
+
+Stage code consumes the final merged mapping and does not need to know which YAML
+fragment declared a value.
+
+## 5. Main orchestration modules
 
 ```text
 src/bmatrix/pipeline.py
 ```
 
-Defines the ordered stage graph and the orchestration behavior. This is where
-stage dependencies and `--from-stage` / `--to-stage` semantics should remain
-centralized.
+Defines:
+
+- `STAGES` and `StageName`;
+- `BuildRequest`;
+- deterministic `PipelinePaths`;
+- dry-run planning;
+- stage-by-stage build and validation dispatch.
 
 ```text
 src/bmatrix/products.py
 ```
 
-Defines or resolves product paths used across stages. Product names must remain
-consistent with the scientific contract and user documentation.
+Resolves the reusable final product set from stage workspaces.
 
 ```text
-src/bmatrix/config*.py
+src/bmatrix/scheduler.py
 ```
 
-Configuration loading, merging and validation utilities. The platform YAML and
-scientific YAML should remain separate so that scientific changes do not require
-rewriting platform paths or PBS settings.
+Defines scheduler-independent job/resource models and renders PBS Pro scripts.
+The scheduler obtains queue, walltime, MPI ranks and the repository-local
+environment loader from the composed configuration.
+
+## 6. Stage modules
 
 ```text
 src/bmatrix/bflow_core/
+```
+
+Consumes an external manifest or deterministic forecast paths. Owns pair
+resolution, ESMF weights, wind transformation, derived variables, FULL/PTB
+products and BFLOW validation.
+
+```text
 src/bmatrix/vbal_core/
+```
+
+Stages BFLOW perturbations, static MPAS files and renders/submits/validates VBAL
+calibration.
+
+```text
 src/bmatrix/unbalance_core/
+```
+
+Applies K2^-1 to centered members and materializes `samplesUnbalanced` for
+HDIAG. The executable is resolved from platform/build configuration.
+
+```text
 src/bmatrix/hdiag_core/
+```
+
+Renders/submits/validates standard-deviation and correlation diagnostics. It
+also validates the configured distance-bin extent before submission.
+
+```text
 src/bmatrix/nicas_core/
+```
+
+Calibrates NICAS per control, creates local/global products and merges variables
+into reusable complete products.
+
+```text
 src/bmatrix/so_core/
+```
+
+Renders/submits/validates the complete-B single-observation variational test.
+
+```text
 src/bmatrix/dirac_core/
+```
+
+Renders/submits/validates the complete-B impulse-response test.
+
+```text
 src/bmatrix/plots_core/
 ```
 
-Stage-specific implementation. Each stage should own only its own generated
-files, local validation and stage-specific logic.
+Runs local post-processing and plotting without PBS submission or modification
+of scientific NetCDF products.
+
+## 7. Stage lifecycle
+
+A scheduler-backed stage normally follows:
 
 ```text
-src/bmatrix/scheduler/
+resolve upstream products
+  -> create/clean deterministic workspace
+  -> stage static and dynamic inputs
+  -> render JEDI/SABER YAML and PBS script
+  -> submit and wait
+  -> validate logs and output files
+  -> expose products to the next stage
 ```
 
-PBS submission and progress display. Stage modules should avoid duplicating PBS
-polling logic.
+PLOTS follows the same resolve/validate contract but executes locally.
 
-## 4. Stage lifecycle
-
-A stage normally follows this lifecycle:
+## 8. Product interfaces
 
 ```text
-resolve inputs
-  -> create or clean workspace
-  -> link/copy required inputs
-  -> render generated YAML/PBS/scripts
-  -> submit or run
-  -> validate outputs
-  -> expose products for downstream stages
-```
+BFLOW -> VBAL
+  manifest.tsv
+  output/*/PTB_f48mf24.nc
+  output/*/FULL_f24.nc
 
-The lifecycle should be observable through logs and manifests. A user should be
-able to determine what happened without reading Python internals.
-
-## 5. Configuration layers
-
-The repository separates platform and scientific configuration:
-
-```text
-configs/jaci-x1.10242.yaml
-  platform/runtime layer:
-    paths, mesh, nproc, PBS, modules, executables, static files
-
-configs/bmatrix-x1.10242.yaml
-  scientific layer:
-    controls, aliases, dimensions, VBAL, UNBALANCE, HDIAG, NICAS, SO, DIRAC
-```
-
-Rules:
-
-- avoid hard-coded user paths in documentation and code;
-- keep scientific defaults in the scientific YAML when possible;
-- keep environment/PBS/runtime defaults in the platform YAML;
-- do not silently concatenate scientific lists during configuration merging.
-
-## 6. Product contracts
-
-Products are the interface between stages. A stage should not require knowledge
-of another stage's internal temporary files except for documented products.
-
-Examples:
-
-```text
-VBAL -> UNBALANCE:
+VBAL -> UNBALANCE
   mpas_vbal.nc
   mpas_sampling.nc
   local VBAL/sampling products
   staged samples
 
-UNBALANCE -> HDIAG:
+UNBALANCE -> HDIAG
   samplesUnbalanced/PTB_f48mf24_*.nc
 
-HDIAG -> NICAS:
+HDIAG -> NICAS
   mpas.stddev.nc
   mpas.cor_rh.nc
   mpas.cor_rv.nc
 
-NICAS -> SO/DIRAC:
+NICAS -> SO/DIRAC
   merge/mpas_nicas.nc
-  merge/mpas_nicas_local_*
-  merge/mpas_nicas_grids_local_*
+  local NICAS and grid products
+
+SO/DIRAC/other products -> PLOTS
+  completed validation and diagnostic products
 ```
 
-See [`stage-products.md`](stage-products.md) for the user-facing product matrix.
+See [`stage-products.md`](stage-products.md) for user-facing acceptance criteria.
 
-## 7. Generated YAML and PBS
+## 9. Generated YAML and PBS
 
-Stage modules generate JEDI/SABER YAML and PBS scripts. Those generated files are
-part of the reproducibility record.
+Generated stage YAML is a reproducibility artifact. It should contain no
+unexplained hard-coded scientific choices that belong in configuration.
 
-Guidelines:
+When changing a renderer:
 
-- generate deterministic YAML when inputs are unchanged;
-- write generated files into the stage workspace;
-- keep generated YAML close to the exact executable invocation;
-- preserve run logs and stdout/stderr;
-- never rely on `/tmp` for persistent stage diagnostics.
+1. identify whether the value is platform, mesh/case, scientific or run-specific;
+2. place persistent values in the correct configuration layer;
+3. add validation/accessor logic;
+4. update rendering tests;
+5. update inline YAML comments and configuration documentation;
+6. run a stage smoke test on JACI.
 
-## 8. Validation design
+## 10. Adding a stage
 
-Validation should be explicit and stage-specific.
+A new stage requires:
 
-A good validator checks:
+1. a stage-local package under `src/bmatrix/<stage>_core/`;
+2. input and output product contracts;
+3. deterministic workspace resolution;
+4. preparation, execution/submission and validation functions;
+5. insertion into `StageName`, `STAGES` and pipeline dispatch;
+6. a documented scientific fragment if it has persistent scientific settings;
+7. unit tests for configuration, rendering and ordering;
+8. user/developer documentation and rebuild rules.
 
-```text
-- expected files exist;
-- files are readable;
-- critical dimensions/variables are present;
-- logs indicate successful execution when applicable;
-- downstream-sensitive invariants are preserved.
-```
-
-A validator should not over-interpret scientific quality from a single weak
-signal. Example: `an-bg = 0` in MPAS-native SO output fields is not automatically
-a failure if the OOPS/JEDI log and obs outputs show a successful single-observation
-run.
-
-## 9. Where theory enters the implementation
-
-Scientific meaning is documented in:
-
-```text
-bmatrix-theory.md
-scientific-contract.md
-```
-
-Implementation should reflect those documents through:
-
-```text
-- variable lists and aliases;
-- VBAL relations;
-- UNBALANCE member handling;
-- HDIAG sampling and fitting parameters;
-- NICAS variable grouping;
-- SO and DIRAC B composition;
-- Control2Analysis positioning.
-```
-
-When code and theory diverge, update both or block the change until the intended
-scientific contract is clear.
-
-## 10. Extension points
-
-Common extension points:
-
-| Extension | Likely files/docs to update |
-| --- | --- |
-| New control variable | scientific YAML, product validation, `scientific-contract.md`, tests |
-| New stage | `pipeline.py`, new `*_core`, `user-guide.md`, `stage-products.md`, `developer-guide.md`, tests |
-| New plot type | `plots_core`, `diagnostics-and-plots.md`, tests |
-| New platform | platform YAML, environment loader docs, quickstart docs |
-| New scientific parameter | scientific YAML, `bmatrix-theory.md` or `scientific-contract.md`, tests |
-
-## 11. Anti-patterns
-
-Avoid these patterns:
-
-```text
-- adding hidden stage dependencies through temporary files;
-- using user-specific absolute paths in committed docs;
-- duplicating PBS polling logic in stage modules;
-- mixing MPAS-native stream names and canonical JEDI names without aliases;
-- assuming VBAL writes the final unbalanced ensemble members;
-- treating plotting as a scientific product generator;
-- changing stage order without updating documentation and tests.
-```
+Do not place stage-specific scientific parameters in `configs/jaci.yaml` or
+`configs/jaci-x1.10242.yaml`.
