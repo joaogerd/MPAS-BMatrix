@@ -9,6 +9,7 @@ from bmatrix.artifacts import StageManifest, write_manifest
 from bmatrix.hdiag_core.prepare import prepare as prepare_hdiag
 from bmatrix.unbalance_core.checks import validate_unbalanced_samples
 from bmatrix.unbalance_core.config_files import write_unbalance_yaml
+from bmatrix.unbalance_core.model import unbalance_exe
 
 
 def _config(tmp_path: Path) -> dict[str, object]:
@@ -58,6 +59,35 @@ def test_unbalance_yaml_uses_ensemble_and_vertical_balance_only(tmp_path: Path) 
     }
     assert "BUMP_NICAS" not in output.read_text()
     assert "StdDev" not in output.read_text()
+
+
+def test_unbalance_executable_prefers_explicit_platform_value(tmp_path: Path) -> None:
+    platform = tmp_path / "platform-unbalance.x"
+    legacy = tmp_path / "legacy-unbalance.x"
+    platform.write_text("")
+    legacy.write_text("")
+
+    config = {
+        "install": {
+            "root": str(tmp_path / "install"),
+            "unbalance_executable": str(platform),
+        },
+        "unbalance": {"executable": str(legacy)},
+    }
+
+    assert unbalance_exe(config) == platform
+
+
+def test_unbalance_executable_keeps_legacy_explicit_value_before_default(tmp_path: Path) -> None:
+    legacy = tmp_path / "legacy-unbalance.x"
+    legacy.write_text("")
+
+    config = {
+        "install": {"root": str(tmp_path / "install")},
+        "unbalance": {"executable": str(legacy)},
+    }
+
+    assert unbalance_exe(config) == legacy
 
 
 def _write_unbalance_manifest(workspace: Path) -> None:
