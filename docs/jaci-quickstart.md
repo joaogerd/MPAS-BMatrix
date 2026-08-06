@@ -1,9 +1,12 @@
 # JACI quick start
 
-This page gives a generic command sequence for the global `x1.10242` case on
-JACI. Replace only the exported roots for your account/project.
+This page gives the shortest supported command sequence for the global
+`x1.10242` case on JACI.
 
-## 1. Clone the required repositories
+For explanations, read [`configuration.md`](configuration.md) and
+[`user-guide.md`](user-guide.md).
+
+## 1. Clone the repositories
 
 ```bash
 export PROJECT_ROOT=/path/to/projects
@@ -19,47 +22,57 @@ export BMATRIX_ROOT="$PROJECT_ROOT/MPAS-BMatrix"
 export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
 ```
 
-Install the Python packages in the active environment:
+## 2. Export the JACI/x1.10242 paths
 
 ```bash
+export MONAN_JEDI_SOURCE=/path/to/projects/MONAN-JEDI
+export MONAN_JEDI_INSTALL=/path/to/install/monan-jedi-mpas
+export MONAN_JEDI_UNBALANCE_EXE=/path/to/mpasjedi_unbalance_ensemble.x
+
+export MPAS_MESH_ROOT=/path/to/mpas_meshes
+export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
+
+export STACK_ROOT=/path/to/spack-stack
+```
+
+## 3. Load the environment and install
+
+```bash
+cd "$BMATRIX_ROOT"
+source scripts/load_jaci_env.sh
+
 python -m pip install --no-deps -e "$MPASWF_ROOT"
 python -m pip install -e "$BMATRIX_ROOT"
 ```
 
-## 2. Load the MPAS-JEDI environment
+Optional plotting/testing extras:
 
-The repository includes a path-generic JACI loader. Set `STACK_ROOT` to the root
-of the spack-stack environment available on your system.
+```bash
+python -m pip install -e "$BMATRIX_ROOT[diagnostics,dev]"
+```
+
+## 4. Validate the composed configuration
 
 ```bash
 cd "$BMATRIX_ROOT"
-export STACK_ROOT=/path/to/spack-stack
-source scripts/load_jaci_env.sh
-```
+export CONFIG=configs/jaci-x1.10242.yaml
 
-## 3. Set common inputs
-
-For an existing BFLOW workspace:
-
-```bash
-CONFIG=configs/jaci-x1.10242.yaml
-BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
-```
-
-For a fresh run from `mpaswf` pairs:
-
-```bash
-MANIFEST=/path/to/mpaswf-work/products/mpas-forecast-manifest.tsv
-```
-
-## 4. Check the resolved configuration
-
-```bash
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix check-config \
   --config "$CONFIG"
 ```
 
-## 5. Build from a `mpaswf` manifest
+Do not continue if any required value remains as `${VARIABLE}` or resolves to the
+wrong mesh, installation, static directory, queue or work root.
+
+## 5. Run from a `mpaswf` manifest
+
+```bash
+export MANIFEST=/path/to/mpaswf-work/products/mpas-forecast-manifest.tsv
+
+test -s "$MANIFEST"
+```
+
+Dry-run:
 
 ```bash
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
@@ -67,131 +80,77 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --manifest "$MANIFEST" \
   --from-stage bflow \
   --to-stage plots \
+  --dry-run
+```
+
+Full run:
+
+```bash
+PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+  --config "$CONFIG" \
+  --manifest "$MANIFEST" \
+  --from-stage bflow \
+  --to-stage plots \
+  --plot-level 30 \
+  --plot-dpi 150 \
   --clean \
   --poll-seconds 30
 ```
 
-## 6. Run selected stages from an existing BFLOW workspace
-
-Only UNBALANCE:
+## 6. Resume from an existing BFLOW workspace
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --from-stage unbalance \
-  --to-stage unbalance \
-  --clean \
-  --poll-seconds 10
-```
-
-UNBALANCE through HDIAG:
-
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --from-stage unbalance \
-  --to-stage hdiag \
-  --clean \
-  --poll-seconds 10
-```
-
-NICAS only after HDIAG is valid:
-
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --from-stage nicas \
-  --to-stage nicas \
-  --clean \
-  --poll-seconds 10
-```
-
-SO only after NICAS is valid:
-
-```bash
-AUDIT_DIR="$WORK_ROOT/audits"
-mkdir -p "$AUDIT_DIR"
+export BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
 
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
-  --from-stage so \
-  --to-stage so \
+  --from-stage vbal \
+  --to-stage plots \
+  --plot-level 30 \
+  --plot-dpi 150 \
   --clean \
-  --poll-seconds 10 \
-  2>&1 | tee "$AUDIT_DIR/so_latest.log"
+  --poll-seconds 30
 ```
 
-DIRAC only after SO and NICAS are valid:
+## 7. Run one stage
 
 ```bash
-AUDIT_DIR="$WORK_ROOT/audits"
-mkdir -p "$AUDIT_DIR"
-
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
   --from-stage dirac \
   --to-stage dirac \
   --clean \
-  --poll-seconds 10 \
-  2>&1 | tee "$AUDIT_DIR/dirac_latest.log"
-```
-
-Full workflow through DIRAC:
-
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --clean \
   --poll-seconds 10
 ```
 
-Full workflow through plots:
+Valid stages:
 
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --to-stage plots \
-  --plot-level 30 \
-  --plot-dpi 150 \
-  --clean \
-  --poll-seconds 10
+```text
+bflow, vbal, unbalance, hdiag, nicas, so, dirac, plots
 ```
 
-## 7. Validate completed products
+## 8. Validate products
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --stage so
-
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --stage dirac
+for stage in bflow vbal unbalance hdiag nicas so dirac plots; do
+  PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
+    --config "$CONFIG" \
+    --bflow-workspace "$BFLOW" \
+    --stage "$stage" || break
+done
 ```
 
-## 8. Generate plots only
+List reusable final products:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix plots \
+PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix products \
   --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --plot-level 30 \
-  --plot-dpi 150 \
-  --clean
+  --bflow-workspace "$BFLOW"
 ```
 
 ## 9. Development checks
-
-Always run:
 
 ```bash
 cd "$BMATRIX_ROOT"
@@ -204,11 +163,4 @@ python -m pytest -p no:cacheprovider -q
 python -m ruff check src/bmatrix tests
 
 git diff --check
-```
-
-Avoid writing persistent audit files to `/tmp`. Use a durable project work area,
-for example:
-
-```text
-$WORK_ROOT/audits/
 ```
