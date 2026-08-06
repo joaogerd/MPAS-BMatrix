@@ -9,7 +9,7 @@ The documentation is intentionally separated by audience:
 
 ```text
 User/operator docs
-  how to run, what to provide, what each stage produces and how to validate
+  how to run, configure, validate and interpret the stage products
 
 Scientific/developer docs
   theory, contracts, architecture, tests and extension rules
@@ -17,11 +17,14 @@ Scientific/developer docs
 
 ## User/operator documentation
 
-Read these when your goal is to run the pipeline or inspect products.
+Read these when your goal is to configure or run the pipeline and inspect its
+products.
 
 | Document | Purpose |
 | --- | --- |
-| [`user-guide.md`](user-guide.md) | Main user guide: installation, quick start, stage-by-stage execution and acceptance checks. |
+| [`end-to-end-tutorial.md`](end-to-end-tutorial.md) | Full smoke-test procedure from checkout/environment through final artifact checks. |
+| [`user-guide.md`](user-guide.md) | Main user guide: installation, stage-by-stage execution and acceptance checks. |
+| [`configuration.md`](configuration.md) | Configuration hierarchy, required environment variables, include rules and rebuild boundaries. |
 | [`jaci-quickstart.md`](jaci-quickstart.md) | Compact JACI-oriented command sequence. |
 | [`stage-products.md`](stage-products.md) | Inputs, outputs and acceptance criteria for each stage. |
 | [`mpaswf-pairs.md`](mpaswf-pairs.md) | How to generate f024/f048 MPAS NMC forecast pairs and the manifest with `mpaswf`. |
@@ -40,6 +43,8 @@ understand how the implementation works.
 | [`developer-guide.md`](developer-guide.md) | Developer workflow, extension rules, rebuild rules and PR expectations. |
 | [`architecture.md`](architecture.md) | Internal module architecture, configuration layers and stage lifecycle. |
 | [`testing.md`](testing.md) | Unit, integration and JACI smoke testing strategy. |
+| [`configuration-audit.md`](configuration-audit.md) | Analysis of how the original three configuration files were used and where they conflicted. |
+| [`configuration-reorganization.md`](configuration-reorganization.md) | Final configuration ownership, split layout and corrections. |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | Top-level contribution checklist. |
 | [`refactoring.md`](refactoring.md) | Historical notes from the refactored architecture. |
 
@@ -83,12 +88,13 @@ export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
 
 ## Current validated case
 
-The documentation assumes the global MPAS tutorial mesh and the scientific
-contract declared in:
+The global x1.10242 case is composed from:
 
 ```text
+configs/jaci.yaml
 configs/jaci-x1.10242.yaml
 configs/bmatrix-x1.10242.yaml
+configs/bmatrix/x1.10242/*.yaml
 ```
 
 A typical BFLOW workspace path follows this pattern:
@@ -97,4 +103,5 @@ A typical BFLOW workspace path follows this pattern:
 $WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>
 ```
 
-Use the same stage contract when comparing outputs or debugging regressions.
+Use `mpas-bmatrix check-config` to inspect the fully merged mapping and the list
+of source YAML files before launching a calibration.
