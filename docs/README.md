@@ -1,7 +1,9 @@
 # Documentation index
 
-This directory documents `MPAS-BMatrix`, the official MPAS-JEDI/SABER/BUMP
-static B-matrix workflow repository.
+This directory documents `MPAS-BMatrix`, the INPE/MONAN static B-matrix workflow
+repository for MPAS-JEDI/SABER/BUMP background-error covariance products used in
+the MONAN atmospheric data-assimilation workflow. It works with MPAS-based model
+states, but it is not an official NCAR MPAS repository.
 
 The documentation is intentionally separated by audience:
 
