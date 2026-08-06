@@ -48,7 +48,7 @@ uses those members for the statistics.
 
 ## Quick start
 
-Use a project area and a separate work area. Adapt only the exported roots:
+Use a project area and a separate work area:
 
 ```bash
 export PROJECT_ROOT=/path/to/projects
@@ -71,20 +71,51 @@ python -m pip install --no-deps -e "$MPASWF_ROOT"
 python -m pip install -e "$BMATRIX_ROOT"
 ```
 
-On JACI, load the MPAS-JEDI runtime:
+Configure the paths used by the default JACI x1.10242 case:
+
+```bash
+export MONAN_JEDI_SOURCE=/path/to/projects/MONAN-JEDI
+export MONAN_JEDI_INSTALL=/path/to/install/monan-jedi-mpas
+export MONAN_JEDI_UNBALANCE_EXE=/path/to/mpasjedi_unbalance_ensemble.x
+
+export MPAS_MESH_ROOT=/path/to/mpas_meshes
+export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
+
+export STACK_ROOT=/path/to/spack-stack
+```
+
+Load the MPAS-JEDI runtime and inspect the fully composed configuration:
 
 ```bash
 cd "$BMATRIX_ROOT"
-export STACK_ROOT=/path/to/spack-stack
 source scripts/load_jaci_env.sh
+
+CONFIG=configs/jaci-x1.10242.yaml
+mpas-bmatrix check-config --config "$CONFIG"
 ```
+
+The default configuration is composed from:
+
+```text
+configs/jaci.yaml
+  JACI site/build/runtime base
+
+configs/jaci-x1.10242.yaml
+  runnable x1.10242 case
+
+configs/bmatrix-x1.10242.yaml
+  scientific-contract aggregator
+
+configs/bmatrix/x1.10242/*.yaml
+  one documented scientific fragment per stage
+```
+
+Read [`docs/configuration.md`](docs/configuration.md) before changing paths or
+scientific parameters.
 
 Run from an existing BFLOW workspace:
 
 ```bash
-cd "$BMATRIX_ROOT"
-
-CONFIG=configs/jaci-x1.10242.yaml
 BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
 
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
@@ -115,13 +146,13 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
 
 ## Documentation map
 
-The documentation is separated by audience.
-
 ### User/operator documentation
 
 | Document | Purpose |
 | --- | --- |
+| [`docs/end-to-end-tutorial.md`](docs/end-to-end-tutorial.md) | Full colleague smoke-test procedure. |
 | [`docs/user-guide.md`](docs/user-guide.md) | Main execution guide: how to run, what to provide and how to validate. |
+| [`docs/configuration.md`](docs/configuration.md) | Configuration hierarchy, environment variables, include rules and rebuild boundaries. |
 | [`docs/jaci-quickstart.md`](docs/jaci-quickstart.md) | Compact JACI command sequence. |
 | [`docs/stage-products.md`](docs/stage-products.md) | Inputs, outputs and acceptance criteria for every stage. |
 | [`docs/mpaswf-pairs.md`](docs/mpaswf-pairs.md) | How to generate f024/f048 NMC forecast pairs with `mpaswf`. |
@@ -133,6 +164,8 @@ The documentation is separated by audience.
 | --- | --- |
 | [`docs/bmatrix-theory.md`](docs/bmatrix-theory.md) | Scientific theory and meaning of each stage. |
 | [`docs/scientific-contract.md`](docs/scientific-contract.md) | Variable names, aliases, SABER/BUMP blocks and invariants. |
+| [`docs/configuration-audit.md`](docs/configuration-audit.md) | Audit of the original three configuration files. |
+| [`docs/configuration-reorganization.md`](docs/configuration-reorganization.md) | Configuration corrections and final ownership model. |
 | [`docs/developer-guide.md`](docs/developer-guide.md) | Developer workflow, extension rules and maintenance expectations. |
 | [`docs/architecture.md`](docs/architecture.md) | Internal module architecture and stage lifecycle. |
 | [`docs/testing.md`](docs/testing.md) | Unit, integration and JACI smoke testing guidance. |
@@ -140,8 +173,6 @@ The documentation is separated by audience.
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Top-level contribution checklist. |
 
 ## Development checks
-
-For documentation or code changes:
 
 ```bash
 cd "$BMATRIX_ROOT"
