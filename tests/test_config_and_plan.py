@@ -109,6 +109,31 @@ def test_load_config_rejects_include_cycles(tmp_path: Path) -> None:
         load_config(tmp_path / "a.yaml")
 
 
+def test_load_config_rejects_unresolved_environment_variables(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "project": {
+                    "project_root": "${MISSING_PROJECT_ROOT}",
+                    "work_root": str(tmp_path / "work"),
+                },
+                "mesh": {"name": "x1.test", "grid": str(tmp_path / "mesh.nc")},
+                "runtime": {"config_dt": 60},
+                "bflow": {
+                    "nmc": {"older_lead_hours": 48, "newer_lead_hours": 24},
+                    "products": {},
+                    "regridding": {},
+                    "wind_transform": {},
+                },
+            }
+        )
+    )
+
+    with pytest.raises(ConfigurationError, match="MISSING_PROJECT_ROOT"):
+        load_config(config_path)
+
+
 def test_repository_default_config_composes_all_scientific_stages(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
