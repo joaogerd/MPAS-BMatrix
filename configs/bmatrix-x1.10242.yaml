@@ -31,7 +31,7 @@
 # controls.yaml   canonical/file names and 3D/2D dimensions
 # bflow.yaml      NMC preprocessing, products and derived variables
 # vbal.yaml       vertical-balance calibration
-# unbalance.yaml  explicit stage marker; executable belongs to JACI
+# unbalance.yaml  K2^-1 application/read contract; executable belongs to JACI
 # hdiag.yaml      variance and correlation diagnostics
 # nicas.yaml      NICAS calibration and internal diagnostics
 # so.yaml         complete-B variational single-observation validation
