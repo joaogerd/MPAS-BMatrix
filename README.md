@@ -1,8 +1,12 @@
 # MPAS-BMatrix
 
-`MPAS-BMatrix` is the official Python orchestration repository for building,
+`MPAS-BMatrix` is the INPE/MONAN Python orchestration repository for building,
 validating and diagnosing static MPAS-JEDI/SABER/BUMP background-error
-covariance products for a global MPAS workflow.
+covariance products used by the MONAN atmospheric data-assimilation workflow.
+
+MONAN currently uses MPAS-based model states in this workflow. This repository
+therefore works with MPAS-JEDI/SABER/BUMP products, but it is not an official
+NCAR MPAS repository.
 
 The package exposes one public command:
 
