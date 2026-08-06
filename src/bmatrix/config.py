@@ -23,12 +23,14 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 import os
+import re
 
 import yaml
 
 from .errors import ConfigurationError
 
 Config = dict[str, Any]
+_ENV_REFERENCE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
 
 
 def _load_yaml(path: Path) -> Config:
@@ -74,6 +76,34 @@ def expand_env(value: Any) -> Any:
     return value
 
 
+def _unresolved_environment_references(value: Any, path: str = "") -> list[tuple[str, str]]:
+    """Return unresolved environment-variable references with YAML key paths."""
+    unresolved: list[tuple[str, str]] = []
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            child = f"{path}.{key}" if path else str(key)
+            unresolved.extend(_unresolved_environment_references(item, child))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            child = f"{path}[{index}]"
+            unresolved.extend(_unresolved_environment_references(item, child))
+    elif isinstance(value, str):
+        for match in _ENV_REFERENCE.finditer(value):
+            unresolved.append((path or "<root>", match.group(1) or match.group(2)))
+    return unresolved
+
+
+def _validate_environment_expansion(config: Mapping[str, Any]) -> None:
+    """Fail early when a composed configuration still contains ``${VAR}``."""
+    unresolved = _unresolved_environment_references(config)
+    if not unresolved:
+        return
+    details = ", ".join(f"{path} -> {name}" for path, name in unresolved)
+    raise ConfigurationError(
+        "Variáveis de ambiente não definidas na configuração resolvida: " + details
+    )
+
+
 def _include_paths(path: Path, document: Config) -> tuple[Path, ...]:
     """Remove and resolve the optional ``include`` declaration from a YAML map."""
     raw = document.pop("include", None)
@@ -90,7 +120,14 @@ def _include_paths(path: Path, document: Config) -> tuple[Path, ...]:
     for specification in specifications:
         if not isinstance(specification, str) or not specification.strip():
             raise ConfigurationError(f"Cada item de include deve ser um caminho não vazio: {path}")
-        candidate = Path(os.path.expandvars(specification)).expanduser()
+        expanded = os.path.expandvars(specification)
+        unresolved = _unresolved_environment_references(expanded, "include")
+        if unresolved:
+            names = ", ".join(name for _, name in unresolved)
+            raise ConfigurationError(
+                f"Variáveis de ambiente não definidas em include de {path}: {names}"
+            )
+        candidate = Path(expanded).expanduser()
         if not candidate.is_absolute():
             candidate = path.parent / candidate
         paths.append(candidate.resolve())
@@ -132,7 +169,13 @@ def _contract_path(platform_path: Path, platform: Mapping[str, Any]) -> Path | N
         return None
     if not isinstance(specification, str) or not specification.strip():
         raise ConfigurationError("bmatrix.configuration deve ser um caminho YAML não vazio.")
-    candidate = Path(os.path.expandvars(specification)).expanduser()
+    unresolved = _unresolved_environment_references(specification, "bmatrix.configuration")
+    if unresolved:
+        names = ", ".join(name for _, name in unresolved)
+        raise ConfigurationError(
+            "Variáveis de ambiente não definidas em bmatrix.configuration: " + names
+        )
+    candidate = Path(specification).expanduser()
     return candidate if candidate.is_absolute() else (platform_path.parent / candidate).resolve()
 
 
@@ -170,6 +213,7 @@ def load_config(path: str | Path) -> Config:
         merged["bmatrix_contract_sources"] = [str(source) for source in contract_sources]
 
     merged["configuration_sources"] = [str(source) for source in platform_sources]
+    _validate_environment_expansion(merged)
     validate_config_shape(merged)
     return merged
 
