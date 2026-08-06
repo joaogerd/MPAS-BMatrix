@@ -8,24 +8,35 @@ from ..shell import require_file
 from ..vbal_core.model import covariance_root
 
 
-UNBALANCE_EXE_DEFAULT = (
-    "/p/projetos/monan_das/joao.gerd/projects/MONAN-JEDI/"
-    "build-unbalance/bin/mpasjedi_unbalance_ensemble.x"
-)
-
-
 def unbalance_workspace(config: Mapping[str, object], vbal_workspace_path: str | Path) -> Path:
     """Resolve the deterministic UNBALANCE workspace for one VBAL run."""
     return covariance_root(config) / "unbalance" / Path(vbal_workspace_path).name
 
 
 def unbalance_exe(config: Mapping[str, object]) -> Path:
-    """Resolve the executable that applies K2^-1 to the centered perturbation ensemble."""
-    section = config.get("unbalance", {})
-    path = UNBALANCE_EXE_DEFAULT
-    if isinstance(section, Mapping):
-        path = str(section.get("executable", path))
-    return require_file(path, "mpasjedi_unbalance_ensemble.x")
+    """Resolve the executable that applies K2^-1 to centered perturbations.
+
+    The executable is a platform/build concern and therefore belongs under
+    ``install.unbalance_executable``. ``unbalance.executable`` remains accepted
+    as a backward-compatible fallback for older configuration files. When neither
+    is declared, the standard executable name is resolved below ``install.root``.
+    """
+    install = config.get("install", {})
+    legacy = config.get("unbalance", {})
+
+    configured: object | None = None
+    if isinstance(install, Mapping):
+        configured = install.get("unbalance_executable")
+        if configured is None and install.get("root"):
+            configured = Path(str(install["root"])) / "bin" / "mpasjedi_unbalance_ensemble.x"
+    if configured is None and isinstance(legacy, Mapping):
+        configured = legacy.get("executable")
+    if configured is None:
+        raise ValueError(
+            "Configure install.unbalance_executable ou install.root para localizar "
+            "mpasjedi_unbalance_ensemble.x."
+        )
+    return require_file(configured, "mpasjedi_unbalance_ensemble.x")
 
 
 def vbal_date(vbal_root: str | Path) -> str:
@@ -35,4 +46,3 @@ def vbal_date(vbal_root: str | Path) -> str:
     if not match:
         raise RuntimeError("Data principal não encontrada no run_vbal.yaml")
     return match.group(1).strip("'\"")
-
