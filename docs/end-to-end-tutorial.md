@@ -1,54 +1,46 @@
 # End-to-end smoke tutorial
 
-This tutorial is the document to send to a colleague who needs to test the full
+This tutorial is intended for a colleague who needs to test the complete
 `MPAS-BMatrix` workflow for the first time.
 
-The goal is not to produce a statistically robust production B-matrix. The goal
-is to verify that the complete sequence is operational, reproducible and produces
-all expected artifacts:
+The smoke test verifies that the complete operational chain works:
 
 ```text
 mpaswf -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
-`mpaswf` is the upstream workflow that generates MPAS forecast pairs. From
-`BFLOW` onward, the workflow is owned by this repository.
+It does **not** prove that the number of NMC samples is sufficient for a
+production-quality B-matrix. It proves that the repositories, environment,
+configuration, executables, scheduler jobs and product interfaces are working.
 
-## 0. What this test proves
+## 1. Information the tester must report
 
-A successful end-to-end smoke run proves that:
+Before starting, create a text file or laboratory note containing:
 
-- the repositories can be cloned and installed;
-- the MPAS-JEDI runtime environment can be loaded;
-- the configuration resolves correctly;
-- MPAS f024/f048 forecast pairs or a compatible manifest are available;
-- BFLOW can prepare the training perturbations;
-- VBAL, UNBALANCE, HDIAG and NICAS can build the static B products;
-- SO can use those products inside `mpasjedi_variational.x`;
-- DIRAC can produce the complete-B impulse response;
-- PLOTS can generate diagnostic figures and summaries.
+```text
+tester name:
+machine/login node:
+MPAS-BMatrix commit:
+mpaswf commit:
+configuration entry point:
+mpaswf manifest or existing BFLOW workspace:
+start date/time:
+```
 
-It does not prove that the sample size is scientifically sufficient for
-production. For production, increase the number of NMC samples and repeat the
-same acceptance checks.
+At the end, add job IDs, log paths, validation results and missing products.
 
-## 1. Choose generic roots
+## 2. Choose project and work roots
 
-Ask the tester to choose a project area and a work area. These examples are
-placeholders and must be adapted to the target machine/account:
+Use persistent storage. Do not use `/tmp` for generated workspaces or audit logs.
 
 ```bash
 export PROJECT_ROOT=/path/to/projects
 export WORK_ROOT=/path/to/work/MPAS-BMatrix
-export STACK_ROOT=/path/to/spack-stack
 
 mkdir -p "$PROJECT_ROOT" "$WORK_ROOT"
 ```
 
-On JACI, use a persistent project filesystem for `WORK_ROOT`; do not use `/tmp`
-for this workflow.
-
-## 2. Clone the repositories
+## 3. Clone the repositories
 
 ```bash
 cd "$PROJECT_ROOT"
@@ -60,95 +52,122 @@ export BMATRIX_ROOT="$PROJECT_ROOT/MPAS-BMatrix"
 export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
 ```
 
-If the test must use an open documentation branch, check it out explicitly:
+Record the tested revisions:
 
 ```bash
-cd "$BMATRIX_ROOT"
-git fetch origin
-git checkout docs/main-documentation
+git -C "$BMATRIX_ROOT" rev-parse HEAD
+git -C "$MPASWF_ROOT" rev-parse HEAD
 ```
 
-After the documentation PR is merged, use `main` instead.
+Use the `main` branch unless a specific test branch was explicitly requested.
 
-## 3. Load the environment and install packages
+## 4. Declare the JACI x1.10242 paths
 
-The B-matrix repository contains a path-generic JACI loader. Set `STACK_ROOT`
-first, then source the loader:
+The committed YAML files are generic and obtain account/site paths from
+environment variables.
+
+```bash
+export MONAN_JEDI_SOURCE=/path/to/projects/MONAN-JEDI
+export MONAN_JEDI_INSTALL=/path/to/install/monan-jedi-mpas
+export MONAN_JEDI_UNBALANCE_EXE=/path/to/mpasjedi_unbalance_ensemble.x
+
+export MPAS_MESH_ROOT=/path/to/mpas_meshes
+export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
+
+export STACK_ROOT=/path/to/spack-stack
+```
+
+The configured static directory must contain compatible files such as:
+
+```text
+x1.10242.invariant.nc
+namelist.atmosphere_240km
+streams.atmosphere_240km
+stream_list.atmosphere.*
+```
+
+The namelist, streams and stream lists must match the installed MPAS Registry and
+physics tables.
+
+## 5. Load the runtime and install the packages
 
 ```bash
 cd "$BMATRIX_ROOT"
 source scripts/load_jaci_env.sh
-```
 
-Install both Python packages in the active environment:
-
-```bash
 python -m pip install --no-deps -e "$MPASWF_ROOT"
 python -m pip install -e "$BMATRIX_ROOT"
 ```
 
-For optional diagnostics and development checks:
+For plotting and developer checks:
 
 ```bash
 python -m pip install -e "$BMATRIX_ROOT[diagnostics,dev]"
 ```
 
-Minimum acceptance:
+Minimum command checks:
 
 ```bash
 command -v mpaswf
 command -v mpas-bmatrix || true
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix --help
+PYTHONPATH="$BMATRIX_ROOT/src:${PYTHONPATH:-}" python -m bmatrix --help
 ```
 
-The installed console command and the module invocation should both be usable. If
-only the module invocation works, continue the smoke test with:
+## 6. Validate the composed configuration
 
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix <subcommand>
-```
-
-## 4. Prepare the configuration
-
-The default B-matrix configuration used by this repository is:
+The default runnable case is:
 
 ```bash
 cd "$BMATRIX_ROOT"
 export CONFIG=configs/jaci-x1.10242.yaml
 ```
 
-Before running anything expensive, inspect and validate the resolved
-configuration:
+It is composed from:
+
+```text
+configs/jaci.yaml
+configs/jaci-x1.10242.yaml
+configs/bmatrix-x1.10242.yaml
+configs/bmatrix/x1.10242/*.yaml
+```
+
+Resolve and inspect it before submitting any PBS jobs:
 
 ```bash
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix check-config \
-  --config "$CONFIG"
+  --config "$CONFIG" \
+  > "$WORK_ROOT/check-config.json"
+
+less "$WORK_ROOT/check-config.json"
 ```
 
 Minimum acceptance:
 
-- the command exits successfully;
-- mesh, static paths, executable paths and PBS settings resolve to the intended
-  machine-specific locations;
-- `configs/bmatrix-x1.10242.yaml` is included as the scientific contract.
+- the command exits with status 0;
+- no required path remains as an unresolved `${VARIABLE}` string;
+- `project.work_root` points to the intended persistent work area;
+- `mesh.name` is `x1.10242`;
+- `mesh.nproc` is the intended rank count and a matching partition exists;
+- MPAS-JEDI executables and static files resolve to the intended installation;
+- the resolved mapping contains `controls`, `bflow`, `vbal`, `unbalance`,
+  `hdiag`, `nicas`, `single_observation` and `dirac`;
+- `configuration_sources` and `bmatrix_contract_sources` list the expected YAML
+  files.
 
-If this fails, fix paths and environment first. Do not continue to pair
-generation or B-matrix stages.
+Do not continue until this step is correct.
 
-## 5. Generate forecast pairs with mpaswf
+## 7. Obtain the forecast-pair input
 
-Use this path when the tester needs to generate pairs from scratch.
+### Route A: generate pairs with `mpaswf`
 
-Create or select an `mpaswf` configuration file. The exact configuration is
-machine-specific and must define the MPAS mesh/static files, date range, forecast
-lead times, WPS/GFS settings and work directory.
+Select a valid `mpaswf` configuration:
 
 ```bash
 cd "$MPASWF_ROOT"
 export MPASWF_CONFIG=/path/to/mpaswf-config.yaml
 ```
 
-Run the upstream workflow:
+Run the upstream phases supported by the selected `mpaswf` version:
 
 ```bash
 mpaswf run --phase prepare  --config "$MPASWF_CONFIG"
@@ -157,58 +176,58 @@ mpaswf run --phase forecast --config "$MPASWF_CONFIG" --submit --wait
 mpaswf run --phase manifest --config "$MPASWF_CONFIG"
 ```
 
-The NMC pair for each valid time `T` is:
+The NMC pair at valid time `T` is:
 
 ```text
-f048 initialized at T - 48 h
+forecast initialized at T - 48 h, valid at T
 minus
-f024 initialized at T - 24 h
+forecast initialized at T - 24 h, valid at T
 ```
 
-Set the manifest path produced by `mpaswf`:
+Set and inspect the produced manifest:
 
 ```bash
 export MANIFEST=/path/to/mpaswf-work/products/mpas-forecast-manifest.tsv
-```
 
-Minimum acceptance:
-
-```bash
 test -s "$MANIFEST"
 head -n 5 "$MANIFEST"
 ```
 
-The manifest must point to readable f024/f048 products for each valid time.
+Each row must reference readable f048 and f024 MPAS-JEDI `mpasout` states valid
+at the same time.
 
-## 6. Alternative: start from an existing BFLOW workspace
-
-Use this path when forecast pairs and BFLOW products were already prepared.
+### Route B: use an existing BFLOW workspace
 
 ```bash
 export BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
-```
 
-Minimum acceptance:
-
-```bash
 test -s "$BFLOW/manifest.tsv"
 find "$BFLOW/output" -name 'PTB_f48mf24.nc' | sort
 find "$BFLOW/output" -name 'FULL_f24.nc' | sort
 find "$BFLOW/output" -name 'FULL_f48.nc' | sort
 ```
 
-If this passes, skip directly to Section 8.
+When this route is used, start the pipeline at VBAL in Section 10.
 
-## 7. Run BFLOW from the mpaswf manifest
+## 8. Inspect the execution plan
 
-Return to the B-matrix repository:
+For Route A:
 
 ```bash
 cd "$BMATRIX_ROOT"
+
+PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+  --config "$CONFIG" \
+  --manifest "$MANIFEST" \
+  --from-stage bflow \
+  --to-stage plots \
+  --dry-run \
+  | tee "$WORK_ROOT/pipeline-plan.json"
 ```
 
-Run only BFLOW first. This makes the hand-off from `mpaswf` explicit and easier
-to debug:
+Confirm the stage order and workspace roots before launching the workflow.
+
+## 9. Run and validate BFLOW
 
 ```bash
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
@@ -217,17 +236,27 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --from-stage bflow \
   --to-stage bflow \
   --clean \
-  --poll-seconds 30
+  --poll-seconds 30 \
+  2>&1 | tee "$WORK_ROOT/bflow-smoke.log"
 ```
 
-Then identify the BFLOW workspace produced by the run. If the configuration uses
-the standard layout, it follows this pattern:
+The command output reports the deterministic BFLOW workspace. Export it if not
+already known:
 
 ```bash
 export BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
 ```
 
-Minimum acceptance:
+Validate:
+
+```bash
+PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
+  --config "$CONFIG" \
+  --bflow-workspace "$BFLOW" \
+  --stage bflow
+```
+
+Minimum artifacts:
 
 ```bash
 test -s "$BFLOW/manifest.tsv"
@@ -236,56 +265,55 @@ find "$BFLOW/output" -name 'FULL_f24.nc' | sort
 find "$BFLOW/output" -name 'FULL_f48.nc' | sort
 ```
 
-Do not continue until BFLOW products exist for the expected number of members.
+## 10. Run VBAL through PLOTS
 
-## 8. Run the complete workflow through plots
-
-For a first tester run, execute the full pipeline through `PLOTS` from the BFLOW
-workspace:
+After BFLOW is valid, run the remaining sequential stages:
 
 ```bash
-cd "$BMATRIX_ROOT"
-
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
+  --from-stage vbal \
   --to-stage plots \
   --plot-level 30 \
   --plot-dpi 150 \
   --clean \
   --poll-seconds 30 \
-  2>&1 | tee "$WORK_ROOT/end_to_end_smoke.log"
+  2>&1 | tee "$WORK_ROOT/bmatrix-end-to-end.log"
 ```
 
-This command runs:
+The orchestrator waits for each PBS dependency and validates a completed stage
+before starting the next one.
 
-```text
-VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
-```
-
-Minimum acceptance:
+For debugging, run one stage at a time:
 
 ```bash
-test -s "$WORK_ROOT/end_to_end_smoke.log"
-grep -Ei 'error|failed|traceback|segmentation|signal' "$WORK_ROOT/end_to_end_smoke.log" || true
+PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+  --config "$CONFIG" \
+  --bflow-workspace "$BFLOW" \
+  --from-stage <stage> \
+  --to-stage <stage> \
+  --clean \
+  --poll-seconds 30
 ```
 
-A non-empty grep result is not always fatal, but every match must be inspected.
-
-## 9. Validate individual stages
-
-Run the public validator after the build completes:
+## 11. Validate every stage explicitly
 
 ```bash
 for stage in bflow vbal unbalance hdiag nicas so dirac plots; do
   PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
     --config "$CONFIG" \
     --bflow-workspace "$BFLOW" \
-    --stage "$stage"
+    --stage "$stage" || break
 done
 ```
 
-Also inspect the product contract:
+Record the first failed stage and do not continue interpreting downstream
+products after a failure.
+
+## 12. Minimum artifact checklist
+
+Use `mpas-bmatrix products` to print the reusable final products:
 
 ```bash
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix products \
@@ -293,142 +321,122 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix products \
   --bflow-workspace "$BFLOW"
 ```
 
-## 10. Check required artifacts manually
-
-Use these checks as a quick checklist before reporting success.
-
-### VBAL
-
-```bash
-find "$WORK_ROOT" -path '*VBAL/mpas_vbal.nc' -o -path '*VBAL/mpas_sampling.nc'
-find "$WORK_ROOT" -path '*VBAL/mpas_vbal_local_*' | head
-find "$WORK_ROOT" -path '*VBAL/mpas_sampling_local_*' | head
-```
-
-### UNBALANCE
-
-```bash
-find "$WORK_ROOT" -path '*samplesUnbalanced/PTB_f48mf24_*.nc' | sort
-```
-
-### HDIAG
-
-```bash
-find "$WORK_ROOT" -path '*HDIAG/mpas.stddev.nc'
-find "$WORK_ROOT" -path '*HDIAG/mpas.cor_rh.nc'
-find "$WORK_ROOT" -path '*HDIAG/mpas.cor_rv.nc'
-```
-
-### NICAS
-
-```bash
-find "$WORK_ROOT" -path '*NICAS/merge/mpas_nicas.nc'
-find "$WORK_ROOT" -path '*NICAS/merge/mpas.nicas_norm.nc'
-find "$WORK_ROOT" -path '*NICAS/merge/mpas.dirac_nicas.nc'
-find "$WORK_ROOT" -path '*NICAS/merge/merge.done'
-```
-
-### SO
-
-```bash
-find "$WORK_ROOT" -path '*SO/run_SO.runlog'
-find "$WORK_ROOT" -path '*SO/obsout_SO_*.h5'
-find "$WORK_ROOT" -path '*SO/an.*.nc'
-```
-
-The SO runlog should show a successful variational run and include:
+The smoke run should contain at least:
 
 ```text
-CostFunction::addIncrement: Analysis
+BFLOW
+  manifest.tsv
+  output/*/FULL_f24.nc
+  output/*/FULL_f48.nc
+  output/*/PTB_f48mf24.nc
+
+VBAL
+  mpas_vbal.nc
+  mpas_sampling.nc
+  local VBAL/sampling products
+
+UNBALANCE
+  samplesUnbalanced/PTB_f48mf24_*.nc
+
+HDIAG
+  mpas.stddev.nc
+  mpas.cor_rh.nc
+  mpas.cor_rv.nc
+
+NICAS
+  merge/mpas_nicas.nc
+  merge/mpas_nicas_local_*
+  merge/mpas_nicas_grids_local_*
+  merge/mpas.nicas_norm.nc
+  merge/mpas.dirac_nicas.nc
+  merge/merge.done
+
+SO
+  an.*.nc
+  obsout_SO_T.h5
+  obsout_SO_U.h5
+  run_SO.runlog
+
+DIRAC
+  mpas.dirac.nc
+
+PLOTS
+  summary.csv
+  README.md
+  diagnostic figure directories
 ```
 
-### DIRAC
+## 13. Numerical and format checks
+
+Check required NetCDF format where applicable:
 
 ```bash
-find "$WORK_ROOT" -path '*DIRAC/mpas.dirac.nc'
-find "$WORK_ROOT" -path '*DIRAC/run_dirac.runlog'
+ncdump -k /path/to/product.nc
 ```
 
-### PLOTS
-
-```bash
-find "$WORK_ROOT" -path '*plots*/summary.csv'
-find "$WORK_ROOT" -path '*plots*' -type f \( -name '*.png' -o -name '*.pdf' \) | head
-```
-
-## 11. Acceptance report for the tester
-
-Ask the tester to send back this information:
+Expected for products requiring CDF5:
 
 ```text
-Repository commit:
-MPAS-BMatrix branch:
+cdf5
+```
+
+For SO, confirm:
+
+```bash
+grep -E 'CostFunction::addIncrement: Analysis|with status = 0' /path/to/SO/run_SO.runlog
+```
+
+For native analysis output, verify expected MPAS fields rather than canonical
+JEDI names:
+
+```bash
+ncdump -h /path/to/SO/an.*.nc | \
+  egrep 'uReconstructZonal|uReconstructMeridional|theta|qv|surface_pressure'
+```
+
+Do not classify SO as failed solely because selected native `an-bg` fields are
+zero; use the OOPS/JEDI log and observation-space outputs.
+
+## 14. Development checks
+
+```bash
+cd "$BMATRIX_ROOT"
+mkdir -p .pytest-tmp
+
+TMPDIR="$BMATRIX_ROOT/.pytest-tmp" \
+PYTHONPATH="src:${PYTHONPATH:-}" \
+python -m pytest -p no:cacheprovider -q
+
+python -m ruff check src/bmatrix tests
+
+git diff --check
+```
+
+## 15. Failure report template
+
+Send the following report back to the maintainer:
+
+```text
+Tester:
+Machine/login node:
+MPAS-BMatrix commit:
 mpaswf commit:
-Machine/cluster:
-CONFIG used:
-MPASWF_CONFIG used, if pairs were generated:
-MANIFEST path, if used:
-BFLOW workspace:
-WORK_ROOT:
-Command used:
-End-to-end log path:
-Stages validated:
-Missing artifacts, if any:
-Errors or warnings inspected:
+CONFIG:
+configuration_sources:
+bmatrix_contract_sources:
+MANIFEST or BFLOW:
+Command executed:
+First failed stage:
+PBS job ID:
+Exit status:
+Main log:
+Stage runlog:
+Last 50 relevant log lines:
+Expected artifact missing or invalid:
+Resolved path/value suspected:
+Development test result:
+Additional observations:
 ```
 
-A successful smoke report should state that all stages validated and that the
-required artifacts listed in Section 10 exist.
-
-## 12. Common failure points
-
-### Configuration does not resolve
-
-Run:
-
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix check-config --config "$CONFIG"
-```
-
-Fix paths to executables, mesh files, static files, PBS queues or `STACK_ROOT`.
-Do not continue until the configuration resolves cleanly.
-
-### BFLOW products are missing
-
-Check whether the `mpaswf` manifest points to readable f024/f048 products. If
-not, fix the upstream `mpaswf` run first.
-
-### UNBALANCE products are missing
-
-Do not run HDIAG directly from raw PTBs. The current official stage order expects
-`UNBALANCE` to create `samplesUnbalanced/PTB_f48mf24_*.nc` before HDIAG.
-
-### HDIAG fails with a BUMP radius or universe error
-
-Check the HDIAG distance class count and distance class width in the scientific
-configuration.
-
-### NICAS fails with `wrong size for dimension nl0`
-
-Check that 2D `surface_pressure` reads are separated from the 3D control group in
-`BUMP_NICAS.read.grids`.
-
-### SO finishes but `an-bg` looks zero in MPAS-native fields
-
-This is not automatically a failure. `SO/an.*.nc` is written through MPAS-native
-streams and does not necessarily expose canonical JEDI increments directly. Use
-runlog success, obsout files and the public validator as the first acceptance
-criteria.
-
-## 13. Next documents
-
-After completing this tutorial, use:
-
-```text
-docs/stage-products.md       detailed acceptance matrix
-docs/user-guide.md           operational guide
-docs/mpaswf-pairs.md         upstream pair generation details
-docs/operations.md           troubleshooting
-docs/bmatrix-theory.md       scientific background
-docs/developer-guide.md      implementation and extension rules
-```
+The most useful report identifies the **first** invalid stage and includes the
+resolved configuration plus exact log/product paths.
