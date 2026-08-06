@@ -1,60 +1,91 @@
-project:
-  name: mpas-bmatrix-global
-  project_root: /p/projetos/monan_das/joao.gerd/projects/mpas-bmatrix-global
-  data_root: /p/projetos/monan_das/joao.gerd/data/mpas-bmatrix-global
-  work_root: /p/projetos/monan_das/joao.gerd/work/mpas-bmatrix-global
+# =============================================================================
+# MPAS-BMatrix — runnable JACI case for the global MPAS x1.10242 mesh
+# =============================================================================
+#
+# Purpose
+# -------
+# This is the DEFAULT configuration passed to the public CLI:
+#
+#   mpas-bmatrix ... --config configs/jaci-x1.10242.yaml
+#
+# It composes three layers:
+#   1. configs/jaci.yaml                 JACI site/runtime settings;
+#   2. this file                         x1.10242 mesh and static inputs;
+#   3. configs/bmatrix-x1.10242.yaml     scientific B-matrix contract.
+#
+# How to modify it
+# ----------------
+# - Change mesh/static paths, MPI size or mesh-dependent runtime values here.
+# - Change JACI queues, installation roots or the environment loader in
+#   configs/jaci.yaml.
+# - Change scientific calibration parameters in the stage files included by
+#   configs/bmatrix-x1.10242.yaml.
+# - Do not add WPS, GFS or MPAS forecast-generation settings here; mpaswf owns
+#   those upstream tasks and provides the forecast-pair manifest consumed by
+#   BFLOW.
+#
+# Required shell variables
+# ------------------------
+# Variables required by the included JACI base:
+#   BMATRIX_ROOT, WORK_ROOT, MONAN_JEDI_INSTALL,
+#   MONAN_JEDI_UNBALANCE_EXE
+#
+# Variables used by this x1.10242 case:
+#   MPAS_MESH_ROOT        Root containing quasi_uniform/x1.10242_240km.
+#   MPAS_JEDI_STATIC_ROOT Directory containing the validated tutorial namelist,
+#                         streams, stream lists and x1.10242.invariant.nc.
+#   MONAN_JEDI_SOURCE     MONAN-JEDI source checkout containing geovars.yaml and
+#                         keptvars.yaml.
+# =============================================================================
 
-environment:
-  loader: scripts/load_jaci_env.sh
-
-install:
-  root: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas
-  mpas_init: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas/bin/mpas_init_atmosphere
-  mpas_atmosphere: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas/bin/mpas_atmosphere
-  init_share: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas/share/MPAS/core_init_atmosphere
-  atmosphere_share: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas/share/MPAS/core_atmosphere
+# Merge the JACI site/runtime base before applying the case settings below.
+# Relative include paths are resolved from the directory containing this file.
+include: jaci.yaml
 
 mesh:
+  # MPAS mesh identifier used in workspace names and invariant/template links.
   name: x1.10242
-  grid: /p/projetos/monan_das/joao.gerd/projects/mpas_meshes/quasi_uniform/x1.10242_240km/mesh/x1.10242.grid.nc
-  graph: /p/projetos/monan_das/joao.gerd/projects/mpas_meshes/quasi_uniform/x1.10242_240km/graph/x1.10242.graph.info
-  partitions_dir: /p/projetos/monan_das/joao.gerd/projects/mpas_meshes/quasi_uniform/x1.10242_240km/partitions
+
+  # MPAS mesh NetCDF used by BFLOW/ESMF and geometry validation.
+  grid: ${MPAS_MESH_ROOT}/quasi_uniform/x1.10242_240km/mesh/x1.10242.grid.nc
+
+  # METIS graph file required by MPAS-JEDI geometry setup.
+  graph: ${MPAS_MESH_ROOT}/quasi_uniform/x1.10242_240km/graph/x1.10242.graph.info
+
+  # Directory containing precomputed graph partitions named
+  # <graph-file>.part.<nproc>.
+  partitions_dir: ${MPAS_MESH_ROOT}/quasi_uniform/x1.10242_240km/partitions
+
+  # MPI ranks used by all covariance jobs and encoded in deterministic workspace
+  # names. A matching graph partition must exist for this value.
   nproc: 128
+
+  # Number of full model vertical levels. NICAS uses it to convert the configured
+  # level-from-top diagnostic location into a one-based model level.
   nvertlevels: 55
 
 static:
-  invariant: /p/projetos/monan_das/joao.gerd/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files/x1.10242.invariant.nc
-  tutorial_physics_files: /p/projetos/monan_das/joao.gerd/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files
-  geovars: /p/projetos/monan_das/joao.gerd/projects/MONAN-JEDI/mpas-jedi/test/testinput/namelists/geovars.yaml
-  keptvars: /p/projetos/monan_das/joao.gerd/projects/MONAN-JEDI/mpas-jedi/test/testinput/namelists/keptvars.yaml
+  # MPAS invariant state for the x1.10242 mesh.
+  invariant: ${MPAS_JEDI_STATIC_ROOT}/x1.10242.invariant.nc
 
-# Parâmetros científicos, variáveis de controle e convenções code<->file
-# ficam isolados no arquivo abaixo. Assim, mudanças na B não exigem editar Python.
+  # Directory containing the validated namelist.atmosphere_240km,
+  # streams.atmosphere_240km and stream_list.atmosphere.* files. These files must
+  # remain compatible with the installed MPAS Registry and physics tables.
+  tutorial_physics_files: ${MPAS_JEDI_STATIC_ROOT}
+
+  # MPAS-JEDI GeoVaLs variable-definition YAML linked into stage workspaces.
+  geovars: ${MONAN_JEDI_SOURCE}/mpas-jedi/test/testinput/namelists/geovars.yaml
+
+  # MPAS-JEDI kept-variable YAML linked into stage workspaces.
+  keptvars: ${MONAN_JEDI_SOURCE}/mpas-jedi/test/testinput/namelists/keptvars.yaml
+
 bmatrix:
+  # Scientific-contract aggregator, resolved relative to this file. It includes
+  # one documented fragment per pipeline stage.
   configuration: bmatrix-x1.10242.yaml
 
-wps:
-  root: /p/projetos/monan_das/joao.gerd/data/mpas-bmatrix-global/external/WPS/WPS-4.6.0
-  ungrib_exe: /p/projetos/monan_das/joao.gerd/data/mpas-bmatrix-global/external/WPS/WPS-4.6.0/ungrib.exe
-  link_grib: /p/projetos/monan_das/joao.gerd/data/mpas-bmatrix-global/external/WPS/WPS-4.6.0/link_grib.csh
-  vtable_gfs: /p/projetos/monan_das/joao.gerd/data/mpas-bmatrix-global/external/WPS/WPS-4.6.0/ungrib/Variable_Tables/Vtable.GFS
-
-pbs:
-  queue: pesqmini
-  queues:
-    forecast: pesqmidi
-    bmatrix: pesqmidi
-  nproc: 128
-  walltime:
-    init: "00:10:00"
-    forecast:
-      f024: "01:00:00"
-      f048: "02:00:00"
-      default: "02:00:00"
-    bmatrix: "02:00:00"
-  walltime_short: "00:10:00"
-  walltime_long: "02:00:00"
-
 runtime:
+  # MPAS time step in seconds used only when BFLOW discovers forecast files from
+  # --start-valid-time/--end-valid-time instead of reading an explicit manifest.
+  # It must match the upstream mpaswf forecast directory naming convention.
   config_dt: 60
-  output_interval: "24:00:00"
