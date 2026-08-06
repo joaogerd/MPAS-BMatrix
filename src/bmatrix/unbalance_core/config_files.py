@@ -13,13 +13,32 @@ from ..vbal_core.config_files import render_vbal_relations
 from .model import unbalance_exe
 
 
+def _read_drivers(unbalance: Mapping[str, Any]) -> dict[str, object]:
+    """Return validated BUMP read flags for the explicit UNBALANCE stage."""
+    configured = unbalance.get("drivers", {})
+    if not isinstance(configured, Mapping):
+        raise ValueError("unbalance.drivers deve ser um bloco YAML.")
+    defaults: dict[str, object] = {
+        "read local sampling": True,
+        "read global sampling": False,
+        "read vertical balance": True,
+    }
+    return {**defaults, **{str(key): value for key, value in configured.items()}}
+
+
 def write_unbalance_yaml(config: Mapping[str, Any], path: str | Path, nmembers: int, date: str) -> None:
     """Render the YAML consumed by ``mpasjedi_unbalance_ensemble.x``."""
     vbal = section(config, "vbal")
+    unbalance = config.get("unbalance", {})
+    if not isinstance(unbalance, Mapping):
+        raise ValueError("unbalance deve ser um bloco YAML.")
     variables = list(ordered_control_file_names(config, vbal.get("group_variable_order")))
     stem = bflow_sample_stem(config)
     data: dict[str, object] = {
-        "geometry": {"nml_file": "./namelist.atmosphere_240km", "streams_file": "./streams.atmosphere_240km"},
+        "geometry": {
+            "nml_file": "./namelist.atmosphere_240km",
+            "streams_file": "./streams.atmosphere_240km",
+        },
         "background": {
             "state variables": variables,
             "filename": "./bg.nc",
@@ -47,11 +66,7 @@ def write_unbalance_yaml(config: Mapping[str, Any], path: str | Path, nmembers: 
                 "saber block name": "BUMP_VerticalBalance",
                 "read": {
                     "io": {"files prefix": str(vbal.get("files_prefix", "mpas"))},
-                    "drivers": {
-                        "read local sampling": True,
-                        "read global sampling": False,
-                        "read vertical balance": True,
-                    },
+                    "drivers": _read_drivers(unbalance),
                     "vertical balance": {
                         "vbal": render_vbal_relations(config),
                         "pseudo inverse": bool(vbal.get("pseudo_inverse", True)),
@@ -78,7 +93,13 @@ def write_unbalance_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
         config,
         name="mpasjediUnbalanceEns",
         run_dir=directory,
-        command=("mpiexec", "-n", str(ranks), str(exe), "./run_unbalance.yaml", "./run_unbalance.runlog"),
+        command=(
+            "mpiexec",
+            "-n",
+            str(ranks),
+            str(exe),
+            "./run_unbalance.yaml",
+            "./run_unbalance.runlog",
+        ),
     )
     write_text(directory / "qsub_unbalance.bash", render_pbs(spec))
-
