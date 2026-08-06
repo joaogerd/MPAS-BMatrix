@@ -1,0 +1,103 @@
+# =============================================================================
+# MPAS-BMatrix scientific contract — HDIAG calibration
+# =============================================================================
+#
+# Purpose
+# -------
+# Configures BUMP diagnostics fitted from the UNBALANCE ensemble: standard
+# deviations plus horizontal and vertical correlation length-scale products.
+#
+# Rebuild boundary
+# ----------------
+# Changes require rerunning HDIAG and all downstream stages: NICAS, SO, DIRAC
+# and PLOTS. VBAL/UNBALANCE need not be rerun unless their inputs changed.
+#
+# How to modify it
+# ----------------
+# - min_members must reflect the minimum statistically acceptable sample count.
+# - Sampling distances must stay within the BUMP universe length scale.
+# - Variable names in initial_length_scales may use canonical names from
+#   controls.yaml; the renderer converts them to file names.
+# - Larger grids/classes increase memory and runtime.
+# =============================================================================
+
+hdiag:
+  # Minimum number of samplesUnbalanced members required before preparation.
+  min_members: 4
+
+  # Prefix used by BUMP for auxiliary sampling/diagnostic products.
+  files_prefix: mpas
+
+  # Vertical coordinate representation used by BUMP geometry diagnostics.
+  bump_vunit: avgheight
+
+  # Load ensemble members one at a time to reduce memory use.
+  iterative_ensemble_loading: true
+
+  drivers:
+    # Compute covariance statistics from the unbalanced ensemble.
+    compute covariance: true
+
+    # Convert covariance statistics into correlations.
+    compute correlation: true
+
+    # Treat each declared control independently in HDIAG fitting.
+    multivariate strategy: univariate
+
+    # Write the global BUMP sampling product.
+    write global sampling: true
+
+    # Estimate and write variance/standard-deviation information.
+    compute variance: true
+
+    # Compute statistical moments required by diagnostics/fitting.
+    compute moments: true
+
+    # Persist diagnostic outputs used by validation and plotting.
+    write diagnostics: true
+
+  sampling:
+    # Number of points used by the main BUMP computation grid.
+    computation grid size: 12000
+
+    # Number of points used by the diagnostic grid.
+    diagnostic grid size: 1000
+
+    # Number of horizontal distance bins. The maximum represented distance is
+    # (distance classes - 1) * distance class width.
+    distance classes: 10
+
+    # Width of each horizontal distance bin in metres.
+    distance class width: 1000000.0
+
+    # Number of reduced vertical levels used for HDIAG diagnostics.
+    reduced levels: 10
+
+    # Enable diagnostics computed locally before global fitting.
+    local diagnostic: true
+
+    # Horizontal averaging length scale in metres for diagnostic smoothing.
+    averaging length-scale: 3000000.0
+
+  variance:
+    # Apply objective filtering to noisy estimated variance fields.
+    objective_filtering: true
+
+    # Number of objective-filtering passes.
+    filtering_iterations: 1
+
+    # Initial length-scale guesses used by the variance filter. Each list item
+    # groups controls sharing the same initial value.
+    initial_length_scales:
+      - variables:
+          - air_horizontal_streamfunction
+          - air_horizontal_velocity_potential
+          - air_temperature
+          - water_vapor_mixing_ratio_wrt_moist_air
+          - air_pressure_at_surface
+        # Initial horizontal scale in metres for the listed variables.
+        value: 3000000.0
+
+  fit:
+    # Horizontal filtering scale in metres used by correlation fitting.
+    horizontal filtering length-scale: 3000000.0
