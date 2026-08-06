@@ -1,0 +1,25 @@
+# =============================================================================
+# MPAS-BMatrix scientific contract — UNBALANCE stage
+# =============================================================================
+#
+# Purpose
+# -------
+# Documents the explicit UNBALANCE stage between VBAL and HDIAG. The stage
+# applies K2^-1 to centered perturbations and writes samplesUnbalanced.
+#
+# Current configuration
+# ---------------------
+# There are currently no user-tunable scientific parameters for this stage. Its
+# executable is a platform/build setting and is configured as
+# `install.unbalance_executable` in configs/jaci.yaml.
+#
+# How to modify it
+# ----------------
+# Add keys here only when the Python UNBALANCE implementation starts consuming a
+# new scientifically meaningful option. Do not place executable paths, queues or
+# user-specific directories in this file.
+# =============================================================================
+
+# Empty mapping retained so the stage remains explicit in the composed contract
+# and in `mpas-bmatrix check-config` output.
+unbalance: {}
