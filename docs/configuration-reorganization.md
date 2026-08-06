@@ -18,7 +18,7 @@ configs/
         ├── unbalance.yaml
         ├── hdiag.yaml
         ├── nicas.yaml
-        ├── single-observation.yaml
+        ├── so.yaml
         └── dirac.yaml
 ```
 
@@ -125,7 +125,7 @@ only `configs/jaci-x1.10242.yaml` to the CLI.
 | `unbalance.yaml` | explicit stage marker; no current tunable scientific value | future key-dependent |
 | `hdiag.yaml` | ensemble threshold, variance/correlation sampling and fitting | HDIAG |
 | `nicas.yaml` | NICAS compression, drivers and internal diagnostic points | NICAS |
-| `single-observation.yaml` | complete-B variational validation and synthetic observations | SO; also DIRAC when analysis variables change |
+| `so.yaml` | complete-B variational validation and synthetic observations | SO; also DIRAC when analysis variables change |
 | `dirac.yaml` | complete-B impulse point, control and background variables | DIRAC |
 
 PLOTS remains configured by run-specific CLI options (`--plot-level`,
