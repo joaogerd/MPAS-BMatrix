@@ -1,0 +1,102 @@
+# =============================================================================
+# MPAS-BMatrix scientific contract — NICAS calibration
+# =============================================================================
+#
+# Purpose
+# -------
+# Configures per-control BUMP_NICAS calibration from the HDIAG horizontal and
+# vertical correlation products. NICAS writes local/global correlation operators,
+# normalization diagnostics and internal impulse-response diagnostics.
+#
+# Rebuild boundary
+# ----------------
+# Changes require rerunning NICAS, SO, DIRAC and PLOTS.
+#
+# How to modify it
+# ----------------
+# - The resolution and maximum grid size control compression, memory and runtime.
+# - dirac_points are NICAS-internal calibration diagnostics, not the final
+#   complete-B DIRAC test configured in dirac.yaml.
+# - Each diagnostic variable must be declared in controls.yaml.
+# - Longitude values follow the convention accepted by the current BUMP build.
+# =============================================================================
+
+nicas:
+  # Prefix used for global/local NICAS products and later SO/DIRAC reads.
+  files_prefix: mpas
+
+  # Vertical coordinate representation used by BUMP.
+  bump_vunit: avgheight
+
+  # Diagnostic level counted downward from the model top for 3D variables.
+  # The renderer converts it to a one-based model level using mesh.nvertlevels.
+  # Surface pressure always uses its only level.
+  dirac_level_from_top: 20
+
+  drivers:
+    # Calibrate each control independently.
+    multivariate strategy: univariate
+
+    # Compute the NICAS operator.
+    compute nicas: true
+
+    # Write rank-local NICAS coefficients used by SO and DIRAC.
+    write local nicas: true
+
+    # Write the global NICAS product used for provenance and reuse.
+    write global nicas: true
+
+    # Write local NICAS grid-description files.
+    write nicas grids: true
+
+    # Run BUMP's internal NICAS impulse-response diagnostic.
+    internal dirac test: true
+
+  nicas:
+    # NICAS resolution/coarsening parameter. Larger values generally create a
+    # coarser and cheaper representation; recalibrate and inspect diagnostics
+    # after changing it.
+    resolution: 8
+
+    # Maximum number of points permitted in a local horizontal NICAS grid.
+    max horizontal grid size: 15000
+
+  # Geographic points used only by BUMP's internal NICAS diagnostic. Each item
+  # contains longitude (degrees), latitude (degrees) and a declared control.
+  dirac_points:
+    - longitude: -45.0
+      latitude: 0.0
+      variable: air_temperature
+    - longitude: -135.0
+      latitude: 0.0
+      variable: air_temperature
+    - longitude: 45.0
+      latitude: 0.0
+      variable: air_temperature
+    - longitude: 135.0
+      latitude: 0.0
+      variable: air_temperature
+    - longitude: -135.0
+      latitude: 45.0
+      variable: air_temperature
+    - longitude: -45.0
+      latitude: 45.0
+      variable: air_temperature
+    - longitude: 45.0
+      latitude: 45.0
+      variable: air_temperature
+    - longitude: 135.0
+      latitude: 45.0
+      variable: air_temperature
+    - longitude: -135.0
+      latitude: -45.0
+      variable: air_temperature
+    - longitude: -45.0
+      latitude: -45.0
+      variable: air_temperature
+    - longitude: 45.0
+      latitude: -45.0
+      variable: air_temperature
+    - longitude: 135.0
+      latitude: -45.0
+      variable: air_temperature
