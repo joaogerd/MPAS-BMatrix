@@ -1,58 +1,32 @@
 # User Guide
 
-This guide is for users who need to run the MPAS-JEDI static B-matrix workflow,
-check the products, and understand whether each stage completed correctly.
+This guide is for users who need to configure, run and validate the INPE/MONAN
+static B-matrix workflow without reading the Python implementation.
 
-It deliberately avoids implementation details. For code architecture, tests and
-scientific formulas, read [`developer-guide.md`](developer-guide.md),
-[`architecture.md`](architecture.md), [`testing.md`](testing.md) and
-[`bmatrix-theory.md`](bmatrix-theory.md).
+For scientific theory, code architecture and extension rules, read:
 
-## 1. What this repository does
+- [`bmatrix-theory.md`](bmatrix-theory.md)
+- [`scientific-contract.md`](scientific-contract.md)
+- [`developer-guide.md`](developer-guide.md)
+- [`architecture.md`](architecture.md)
 
-`MPAS-BMatrix` builds, validates and diagnoses the static MPAS-JEDI/SABER/BUMP
-background-error covariance product set for a global MPAS workflow.
+## 1. Workflow and scope
 
-The end-to-end operational chain is sequential:
+The complete operational chain is sequential:
 
 ```text
 mpaswf -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
-The ordering is part of the scientific contract. Later stages consume products
-from earlier stages, so a subtle failure in one stage can propagate downstream.
-Do not skip validation between stages when debugging.
+`mpaswf` is an external upstream workflow. It owns GFS/WPS, MPAS initialization,
+MPAS f024/f048 forecasts and the same-valid-time forecast-pair manifest.
 
-## 2. Scope boundary
+`MPAS-BMatrix` starts at BFLOW and owns the covariance calibration, validation
+and diagnostics. The order is critical: a stage consumes products from earlier
+stages, and a configuration change invalidates that stage and all downstream
+products.
 
-The upstream MPAS forecast production is handled outside this repository, usually
-by `mpaswf`:
-
-```text
-mpaswf
-  -> GFS/WPS/ungrib
-  -> mpas_init_atmosphere
-  -> MPAS forecasts f024/f048
-  -> same-valid-time NMC forecast-pair manifest
-```
-
-`MPAS-BMatrix` starts at BFLOW:
-
-```text
-MPAS-BMatrix
-  -> BFLOW
-  -> VBAL
-  -> UNBALANCE
-  -> HDIAG
-  -> NICAS
-  -> SO
-  -> DIRAC
-  -> PLOTS
-```
-
-## 3. Clone and install
-
-Use generic roots and adapt only the exported paths:
+## 2. Clone and install
 
 ```bash
 export PROJECT_ROOT=/path/to/projects
@@ -68,70 +42,113 @@ export BMATRIX_ROOT="$PROJECT_ROOT/MPAS-BMatrix"
 export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
 ```
 
-Install the Python packages in the active environment:
+Install both packages in the active Python environment:
 
 ```bash
 python -m pip install --no-deps -e "$MPASWF_ROOT"
 python -m pip install -e "$BMATRIX_ROOT"
 ```
 
-Optional extras:
+Optional MPAS-BMatrix extras:
 
 ```bash
 cd "$BMATRIX_ROOT"
 python -m pip install -e ".[weights,bflow,diagnostics]"
 ```
 
-## 4. Load the runtime environment
+## 3. Configure the JACI x1.10242 case
 
-On JACI, load the MPAS-JEDI runtime from the repository-local loader:
+The default runnable case uses environment variables rather than committed
+personal paths:
+
+```bash
+export MONAN_JEDI_SOURCE=/path/to/projects/MONAN-JEDI
+export MONAN_JEDI_INSTALL=/path/to/install/monan-jedi-mpas
+export MONAN_JEDI_UNBALANCE_EXE=/path/to/mpasjedi_unbalance_ensemble.x
+
+export MPAS_MESH_ROOT=/path/to/mpas_meshes
+export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
+
+export STACK_ROOT=/path/to/spack-stack
+```
+
+`MPAS_JEDI_STATIC_ROOT` must contain the compatible x1.10242 invariant,
+namelist, streams and stream-list files. These files must match the installed
+MPAS Registry and physics tables.
+
+Load the runtime:
 
 ```bash
 cd "$BMATRIX_ROOT"
-export STACK_ROOT=/path/to/spack-stack
 source scripts/load_jaci_env.sh
 ```
 
-Set the common variables:
+The configuration is composed from four layers:
+
+```text
+configs/jaci.yaml
+  JACI site/build/runtime settings
+
+configs/jaci-x1.10242.yaml
+  mesh and static inputs for the runnable case
+
+configs/bmatrix-x1.10242.yaml
+  short scientific-contract aggregator
+
+configs/bmatrix/x1.10242/*.yaml
+  one documented fragment per scientific stage
+```
+
+Set and inspect the runnable configuration:
 
 ```bash
 CONFIG=configs/jaci-x1.10242.yaml
+mpas-bmatrix check-config --config "$CONFIG"
 ```
 
-For an already prepared BFLOW workspace:
+Do not start a long PBS sequence until `check-config` shows the expected paths,
+MPI size, stage sections and source files. See
+[`configuration.md`](configuration.md) for every variable, include rules and
+rebuild boundaries.
 
-```bash
-BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
-```
+## 4. Prepare the forecast-pair input
 
-For a fresh run from `mpaswf` products:
+### Option A: use a `mpaswf` manifest
+
+Generate the f048/f024 forecasts and manifest with `mpaswf`. The final input to
+MPAS-BMatrix is typically:
 
 ```bash
 MANIFEST=/path/to/mpaswf-work/products/mpas-forecast-manifest.tsv
 ```
 
-## 5. Quick start
+Each row must reference an f048 and f024 MPAS state valid at the same time. See
+[`mpaswf-pairs.md`](mpaswf-pairs.md).
 
-### Build from an existing BFLOW workspace
+### Option B: resume from an existing BFLOW workspace
 
 ```bash
-cd "$BMATRIX_ROOT"
-
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --to-stage plots \
-  --plot-level 30 \
-  --plot-dpi 150 \
-  --clean \
-  --poll-seconds 30
+BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
 ```
 
-### Build from a `mpaswf` manifest
+The workspace must already contain a valid `manifest.tsv` and completed BFLOW
+products.
+
+## 5. Dry-run and full execution
+
+Inspect the stage plan without creating files or submitting jobs:
 
 ```bash
-cd "$BMATRIX_ROOT"
+PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+  --config "$CONFIG" \
+  --manifest "$MANIFEST" \
+  --to-stage plots \
+  --dry-run
+```
 
+Run the complete BFLOW-to-PLOTS workflow:
+
+```bash
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --config "$CONFIG" \
   --manifest "$MANIFEST" \
@@ -143,232 +160,23 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --poll-seconds 30
 ```
 
-### Generate only plots from completed products
-
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix plots \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --plot-level 30 \
-  --plot-dpi 150 \
-  --clean
-```
-
-## 6. Inputs and configuration files
-
-The main configuration files are:
-
-```text
-configs/jaci-x1.10242.yaml
-configs/bmatrix-x1.10242.yaml
-```
-
-`configs/jaci-x1.10242.yaml` is the platform/runtime configuration. It defines
-paths, mesh, partitioning, PBS resources, executables and environment settings.
-
-`configs/bmatrix-x1.10242.yaml` is the scientific contract. It defines control
-variables, aliases, VBAL relations, HDIAG parameters, NICAS parameters, SO
-settings, DIRAC settings and plotting defaults.
-
-Before changing scientific parameters, read
-[`scientific-contract.md`](scientific-contract.md). Scientific changes usually
-require rebuilding downstream stages.
-
-## 7. User workflow by stage
-
-Each stage below follows the same structure:
-
-```text
-Input -> what the stage does -> how to run -> outputs -> acceptance criteria
-```
-
-A compact product table is also available in
-[`stage-products.md`](stage-products.md).
-
-### 7.1 mpaswf: upstream forecast-pair generation
-
-**Input**
-
-- MPAS mesh/static configuration;
-- GFS/WPS inputs or equivalent atmospheric initial conditions;
-- `mpaswf` configuration.
-
-**What it does**
-
-Runs the external MPAS forecast workflow and creates same-valid-time f048/f024
-forecast pairs for the NMC method.
-
-**How to run**
-
-```bash
-cd "$MPASWF_ROOT"
-MPASWF_CONFIG=/path/to/mpaswf-config.yaml
-
-mpaswf run --phase prepare  --config "$MPASWF_CONFIG"
-mpaswf run --phase init     --config "$MPASWF_CONFIG" --submit --wait
-mpaswf run --phase forecast --config "$MPASWF_CONFIG" --submit --wait
-mpaswf run --phase manifest --config "$MPASWF_CONFIG"
-```
-
-**Outputs**
-
-```text
-<mpaswf work_dir>/products/mpas-forecast-manifest.tsv
-```
-
-**Acceptance criteria**
-
-- the manifest exists;
-- each row has f048 and f024 states for the same valid time;
-- the referenced forecast files exist and are readable.
-
-### 7.2 BFLOW: prepare B-matrix perturbations
-
-**Input**
-
-- `mpaswf` forecast-pair manifest, or an existing BFLOW workspace;
-- MPAS mesh/static files;
-- scientific configuration from `configs/bmatrix-x1.10242.yaml`.
-
-**What it does**
-
-Transforms forecast pairs into the products used by covariance calibration,
-including the NMC perturbation `PTB_f48mf24.nc`.
-
-**How to run**
-
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --manifest "$MANIFEST" \
-  --from-stage bflow \
-  --to-stage bflow \
-  --clean \
-  --poll-seconds 30
-```
-
-**Outputs**
-
-```text
-FULL_f24.nc
-FULL_f48.nc
-PTB_f48mf24.nc
-template_PTB.nc
-manifest.tsv
-ESMF_weights/weights_manifest.json
-```
-
-**Acceptance criteria**
-
-- `manifest.tsv` exists in the BFLOW workspace;
-- each expected member directory exists;
-- `FULL_f24.nc`, `FULL_f48.nc` and `PTB_f48mf24.nc` exist for each member;
-- the perturbation files contain the expected control variables;
-- ESMF weight metadata exists when regridding is performed.
-
-### 7.3 VBAL: calibrate vertical and multivariate balance
-
-**Input**
-
-- BFLOW workspace;
-- `PTB_f48mf24.nc` members;
-- background/template state and static files.
-
-**What it does**
-
-Calibrates the vertical/multivariate balance operator. Conceptually, it estimates
-how perturbations associated with streamfunction explain balanced components of
-velocity potential, temperature and surface pressure.
-
-**How to run**
+Resume from an existing BFLOW workspace:
 
 ```bash
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
   --from-stage vbal \
-  --to-stage vbal \
+  --to-stage plots \
+  --plot-level 30 \
+  --plot-dpi 150 \
   --clean \
   --poll-seconds 30
 ```
 
-**Outputs**
+## 6. Run and validate one stage
 
-```text
-VBAL/mpas_vbal.nc
-VBAL/mpas_sampling.nc
-VBAL/mpas_vbal_local_*
-VBAL/mpas_sampling_local_*
-samples/PTB_f48mf24_*.nc
-```
-
-**Acceptance criteria**
-
-- the PBS job finishes successfully;
-- `run_vbal.runlog` reports successful completion;
-- `mpas_vbal.nc` and `mpas_sampling.nc` exist;
-- local VBAL and sampling products exist for the expected MPI ranks;
-- the staged `samples/PTB_f48mf24_*.nc` files exist and are CDF5 when required.
-
-### 7.4 UNBALANCE: materialize unbalanced training members
-
-**Input**
-
-- VBAL products;
-- centered/staged perturbation samples.
-
-**What it does**
-
-Applies the inverse/removal of the balanced part represented by the VBAL
-operator and writes explicit unbalanced perturbation members for HDIAG.
-
-This stage is intentionally explicit. Do not rely on VBAL calibration alone to
-write the final `samplesUnbalanced` members.
-
-**How to run**
-
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --from-stage unbalance \
-  --to-stage unbalance \
-  --clean \
-  --poll-seconds 30
-```
-
-**Outputs**
-
-```text
-samplesUnbalanced/PTB_f48mf24_001.nc
-samplesUnbalanced/PTB_f48mf24_002.nc
-samplesUnbalanced/PTB_f48mf24_003.nc
-samplesUnbalanced/PTB_f48mf24_004.nc
-```
-
-**Acceptance criteria**
-
-- all expected unbalanced members exist;
-- files are readable NetCDF products;
-- the files contain the expected control variables;
-- member count is sufficient for HDIAG;
-- validation passes before running HDIAG.
-
-### 7.5 HDIAG: compute standard deviations and correlation scales
-
-**Input**
-
-- `samplesUnbalanced/PTB_f48mf24_*.nc`;
-- VBAL products;
-- background/static files.
-
-**What it does**
-
-Computes the statistical diagnostics used by the rest of the static B:
-standard deviation, horizontal correlation scales and vertical correlation
-scales.
-
-**How to run**
+Use the same stage name in `--from-stage` and `--to-stage`:
 
 ```bash
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
@@ -380,7 +188,88 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --poll-seconds 30
 ```
 
-**Outputs**
+Validate a completed stage without rerunning it:
+
+```bash
+PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
+  --config "$CONFIG" \
+  --bflow-workspace "$BFLOW" \
+  --stage hdiag
+```
+
+Valid stage names are:
+
+```text
+bflow, vbal, unbalance, hdiag, nicas, so, dirac, plots
+```
+
+## 7. Stage-by-stage product checks
+
+The detailed file matrix is in [`stage-products.md`](stage-products.md). The
+minimum user checks are summarized below.
+
+### BFLOW
+
+**Input:** same-valid-time f048/f024 forecast pairs.
+
+**Purpose:** transform MPAS forecasts into FULL states and NMC perturbations.
+
+**Main outputs:**
+
+```text
+FULL_f48.nc
+FULL_f24.nc
+PTB_f48mf24.nc
+template_PTB.nc
+manifest.tsv
+ESMF_weights/weights_manifest.json
+```
+
+**Accept when:** every manifest member has readable FULL/PTB files containing the
+required control variables and expected dimensions.
+
+### VBAL
+
+**Input:** BFLOW perturbations.
+
+**Purpose:** calibrate vertical/multivariate balance coefficients and sampling.
+
+**Main outputs:**
+
+```text
+VBAL/mpas_vbal.nc
+VBAL/mpas_sampling.nc
+VBAL/mpas_vbal_local_*
+VBAL/mpas_sampling_local_*
+```
+
+**Accept when:** the PBS job succeeds and all global/local products exist for the
+configured MPI ranks.
+
+### UNBALANCE
+
+**Input:** VBAL products and centered perturbation samples.
+
+**Purpose:** apply K2^-1 and explicitly write the unbalanced ensemble used by
+HDIAG.
+
+**Main outputs:**
+
+```text
+samplesUnbalanced/PTB_f48mf24_*.nc
+```
+
+**Accept when:** the expected member count exists, files are readable/CDF5 when
+required and all declared controls are present.
+
+### HDIAG
+
+**Input:** `samplesUnbalanced`.
+
+**Purpose:** estimate standard deviations and horizontal/vertical correlation
+scales.
+
+**Main outputs:**
 
 ```text
 HDIAG/mpas.stddev.nc
@@ -388,40 +277,16 @@ HDIAG/mpas.cor_rh.nc
 HDIAG/mpas.cor_rv.nc
 ```
 
-**Acceptance criteria**
+**Accept when:** all products exist, dimensions are consistent and fields are not
+entirely missing or trivially zero.
 
-- the PBS job finishes successfully;
-- all three products exist;
-- products are readable and have dimensions consistent with the mesh/control variables;
-- values are not entirely missing or trivially zero;
-- no BUMP radius/sampling errors appear in the run log.
+### NICAS
 
-### 7.6 NICAS: build correlation/localization products
+**Input:** HDIAG correlation products.
 
-**Input**
+**Purpose:** build and merge the compressed spatial correlation operator.
 
-- HDIAG products: `mpas.cor_rh.nc`, `mpas.cor_rv.nc`, `mpas.stddev.nc`;
-- static files and background inherited from previous stages.
-
-**What it does**
-
-Builds the NICAS spatial correlation/localization products, usually per control
-variable, then merges them into a single product set used by SO, DIRAC and later
-assimilation runs.
-
-**How to run**
-
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --from-stage nicas \
-  --to-stage nicas \
-  --clean \
-  --poll-seconds 30
-```
-
-**Outputs**
+**Main outputs:**
 
 ```text
 NICAS/merge/mpas_nicas.nc
@@ -432,122 +297,52 @@ NICAS/merge/mpas.dirac_nicas.nc
 NICAS/merge/merge.done
 ```
 
-**Acceptance criteria**
+**Accept when:** every per-control job and the merge succeed, and 2D surface
+pressure remains separate from the 3D local read grid.
 
-- per-variable NICAS jobs finish successfully;
-- the merge step finishes successfully;
-- `merge.done` exists;
-- global, local and grid products exist;
-- `surface_pressure` remains handled as a 2D control and is not forced into the
-  3D NICAS read grid.
+### SO
 
-### 7.7 SO: single-observation variational validation
+**Input:** calibrated NICAS, standard deviation and VBAL products.
 
-**Input**
+**Purpose:** verify the complete B in a small variational single-observation run.
 
-- merged NICAS products;
-- HDIAG standard deviation;
-- VBAL products;
-- enriched MPAS background state.
-
-**What it does**
-
-Runs a small variational single-observation test to confirm that the complete B
-composition can be read and applied by `mpasjedi_variational.x`.
-
-**How to run**
-
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --from-stage so \
-  --to-stage so \
-  --clean \
-  --poll-seconds 30
-```
-
-**Outputs**
+**Main outputs:**
 
 ```text
+SO/an.*.nc
 SO/obsout_SO_T.h5
 SO/obsout_SO_U.h5
-SO/an.*.nc
 SO/run_SO.runlog
 ```
 
-**Acceptance criteria**
+**Accept when:** OOPS finishes with status 0, the log contains
+`CostFunction::addIncrement: Analysis`, and expected analysis/observation files
+exist. A zero difference in MPAS-native output fields is not, by itself, proof
+of failure.
 
-- `run_SO.runlog` ends with successful OOPS status;
-- the log contains `CostFunction::addIncrement: Analysis`;
-- expected `obsout_SO_*.h5` files exist;
-- an MPAS-native `an.*.nc` file exists and is readable;
-- do not treat zero difference in native MPAS output fields as an automatic
-  failure without checking the OOPS/JEDI response.
+### DIRAC
 
-### 7.8 DIRAC: complete-B impulse response
+**Input:** calibrated complete B.
 
-**Input**
+**Purpose:** write the complete-B response to one configured impulse.
 
-- merged NICAS products;
-- HDIAG standard deviation;
-- VBAL products;
-- background/static files.
-
-**What it does**
-
-Applies an impulse in a selected variable/location and writes the spatial and
-vertical response of the complete B.
-
-**How to run**
-
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --from-stage dirac \
-  --to-stage dirac \
-  --clean \
-  --poll-seconds 30
-```
-
-**Outputs**
+**Main output:**
 
 ```text
 DIRAC/mpas.dirac.nc
 ```
 
-**Acceptance criteria**
+**Accept when:** the toolbox job succeeds and the response is readable and
+nontrivial.
 
-- the PBS job finishes successfully;
-- `mpas.dirac.nc` exists and is readable;
-- the response is not entirely missing or trivially zero;
-- DIRAC uses the maintained full `dirLats`/`dirLons` plus singular selector
-  contract.
+### PLOTS
 
-### 7.9 PLOTS: diagnostic figures
+**Input:** completed scientific products.
 
-**Input**
+**Purpose:** generate diagnostic figures and summary tables without changing the
+B products.
 
-- completed products from HDIAG, VBAL, NICAS and DIRAC.
-
-**What it does**
-
-Generates visual diagnostics and a summary table. It does not alter scientific
-products and does not submit PBS jobs.
-
-**How to run**
-
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix plots \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --plot-level 30 \
-  --plot-dpi 150 \
-  --clean
-```
-
-**Outputs**
+**Main outputs:**
 
 ```text
 PLOTS/summary.csv
@@ -560,61 +355,69 @@ PLOTS/05_dirac/
 PLOTS/06_spatial_fields/
 ```
 
-**Acceptance criteria**
+**Accept when:** `summary.csv` and the expected figure directories exist and the
+plots are physically interpretable.
 
-- `summary.csv` exists;
-- expected plot directories exist;
-- figures are generated for available products;
-- maps and colorbars are readable;
-- near-zero fields are interpreted cautiously and checked against logs/products.
+## 8. Configuration changes and reruns
 
-## 8. Validation commands
+Start from the earliest affected stage and include `--clean`:
 
-Validate a completed stage:
+```text
+controls or BFLOW changed
+  -> rerun from BFLOW
 
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
-  --stage <stage>
+VBAL changed
+  -> rerun from VBAL
+
+HDIAG changed
+  -> rerun from HDIAG
+
+NICAS changed
+  -> rerun from NICAS
+
+SO observation/minimizer changed
+  -> rerun SO
+
+SO analysis-variable list changed
+  -> rerun SO and DIRAC
+
+DIRAC point/variable changed
+  -> rerun DIRAC and PLOTS
 ```
 
-List products:
+Never reuse downstream products after changing an upstream scientific contract.
 
-```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix products \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW"
+## 9. Troubleshooting sequence
+
+When a stage fails:
+
+1. stop the pipeline at the failed stage;
+2. inspect the generated YAML and PBS script in that stage workspace;
+3. inspect `stdout.log`, `stderr.log` and the stage runlog;
+4. run `mpas-bmatrix validate --stage <stage>`;
+5. compare the resolved configuration with `check-config`;
+6. verify every required upstream product before retrying;
+7. rerun only from the earliest invalid stage with `--clean`.
+
+See [`operations.md`](operations.md) for known errors such as BUMP universe-radius
+limits, NICAS `nl0` mismatches, alias problems and MPAS stream-field errors.
+
+## 10. Reproducibility record
+
+For each test or production run, record:
+
+```text
+repository commit
+configuration entry point
+configuration_sources
+bmatrix_contract_sources
+mpaswf manifest or BFLOW workspace
+stage range
+PBS job IDs
+main log path
+final product paths
+validation result
 ```
 
-Check NetCDF kind when CDF5 is required:
-
-```bash
-ncdump -k <file.nc>
-```
-
-## 9. Troubleshooting
-
-Common issues and fixes are maintained in [`operations.md`](operations.md).
-
-Start with these checks:
-
-```bash
-# Check stage logs.
-find "$WORK_ROOT" -name '*.runlog' -o -name 'stdout.log' -o -name 'stderr.log'
-
-# Check NetCDF format.
-ncdump -k <file.nc>
-
-# Check whether expected products exist.
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix products \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW"
-```
-
-Avoid persistent logs under `/tmp`. Use a durable work directory:
-
-```bash
-AUDIT_DIR="$WORK_ROOT/audits"
-mkdir -p "$AUDIT_DIR"
-```
+The end-to-end colleague test template is available in
+[`end-to-end-tutorial.md`](end-to-end-tutorial.md).
