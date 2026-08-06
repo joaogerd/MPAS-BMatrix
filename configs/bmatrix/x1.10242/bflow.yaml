@@ -30,12 +30,6 @@ bflow:
     # Newer forecast lead in hours. This is the f024 member in f048 - f024.
     newer_lead_hours: 24
 
-    # Short label used in product naming and provenance for the older member.
-    older_label: f48
-
-    # Short label used in product naming and provenance for the newer member.
-    newer_label: f24
-
   products:
     # Template containing the MPAS dimensions/metadata used by BFLOW products.
     template: template_PTB.nc
