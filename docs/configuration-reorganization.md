@@ -22,33 +22,33 @@ configs/
         └── dirac.yaml
 ```
 
-The public configuration entry point remains:
+The public entry point remains:
 
 ```text
 configs/jaci-x1.10242.yaml
 ```
 
-The composition path is:
+Composition is explicit:
 
 ```text
 configs/jaci.yaml
-        ↓ included by
+        ↓ include
 configs/jaci-x1.10242.yaml
-        ↓ references
+        ↓ bmatrix.configuration
 configs/bmatrix-x1.10242.yaml
-        ↓ includes
+        ↓ ordered includes
 configs/bmatrix/x1.10242/*.yaml
 ```
 
 ## 2. Loader changes
 
-The YAML loader now accepts one include:
+Any YAML may now contain one include:
 
 ```yaml
 include: another-file.yaml
 ```
 
-or an ordered include list:
+or an ordered list:
 
 ```yaml
 include:
@@ -56,45 +56,39 @@ include:
   - second.yaml
 ```
 
-Composition rules:
+Rules implemented in `src/bmatrix/config.py`:
 
-1. paths are resolved relative to the file declaring the include;
+1. include paths are resolved relative to the declaring file;
 2. included files are merged in declaration order;
-3. the including file overrides included mappings;
+3. the declaring file has final precedence;
 4. nested mappings are deep-merged;
-5. lists are atomic and replaced rather than concatenated;
+5. lists are atomic and replaced, never concatenated implicitly;
 6. include cycles are rejected;
 7. unresolved environment variables are rejected before stage execution;
-8. resolved configuration provenance records every platform and scientific YAML
-   source.
+8. source provenance records every platform and scientific YAML used.
 
-This preserves one final mapping for stage code while allowing clear file
-ownership.
+This preserves one final mapping for stage code while allowing clear ownership.
 
-## 3. Final responsibility of each public file
+## 3. Final responsibility of the three public files
 
 ### `configs/jaci.yaml`
 
-Owns only JACI site/runtime/build settings:
+JACI site/build configuration shared by case files:
 
 ```text
-project.name
-project.project_root
-project.work_root
+project.*
 environment.loader
-install.root
-install.atmosphere_share
-install.unbalance_executable
+install.*
 pbs.queues.bmatrix
 pbs.walltime.bmatrix
 ```
 
-The file uses environment variables instead of committed user-specific paths.
-It contains no scientific calibration values and no upstream forecast settings.
+It contains no BUMP calibration values and no upstream GFS/WPS/forecast options.
+It is an include base, not the normal CLI entry point.
 
 ### `configs/jaci-x1.10242.yaml`
 
-Owns only the runnable x1.10242 case:
+Runnable x1.10242 case:
 
 ```text
 include: jaci.yaml
@@ -105,61 +99,81 @@ runtime.config_dt
 ```
 
 WPS, GFS, MPAS initialization and forecast settings were removed because those
-belong to `mpaswf`.
+belong to the external `mpaswf` workflow.
 
 ### `configs/bmatrix-x1.10242.yaml`
 
-Is now a short scientific-contract aggregator. It declares `schema_version: 2`
-and includes one documented fragment per scientific stage in workflow order.
+Short scientific-contract aggregator. It declares `schema_version: 2` and
+includes one documented fragment per BFLOW-through-DIRAC stage.
 
-The familiar `bmatrix.configuration` path remains unchanged, so users still pass
-only `configs/jaci-x1.10242.yaml` to the CLI.
+The normal command remains unchanged:
 
-## 4. Scientific stage fragments
+```bash
+mpas-bmatrix build --config configs/jaci-x1.10242.yaml ...
+```
+
+## 4. Scientific fragments and rebuild boundaries
 
 | File | Ownership | Earliest rebuild after change |
 | --- | --- | --- |
-| `controls.yaml` | canonical/file control names and 3D/2D dimensions | BFLOW |
-| `bflow.yaml` | NMC leads, product interfaces, regridding, wind transform, derived variables and checks | BFLOW |
-| `vbal.yaml` | VBAL variable order, drivers, sampling and balance relations | VBAL |
-| `unbalance.yaml` | explicit stage marker; no current tunable scientific value | future key-dependent |
-| `hdiag.yaml` | ensemble threshold, variance/correlation sampling and fitting | HDIAG |
+| `controls.yaml` | canonical/file names and 3D/2D dimensions | BFLOW |
+| `bflow.yaml` | NMC leads, products, regridding, wind transform, derived variables and validation | BFLOW |
+| `vbal.yaml` | variable order, BUMP drivers, sampling, balance relations and inverse settings | VBAL |
+| `unbalance.yaml` | BUMP read contract used while applying K2^-1 | UNBALANCE |
+| `hdiag.yaml` | variance/correlation sampling and fitting | HDIAG |
 | `nicas.yaml` | NICAS compression, drivers and internal diagnostic points | NICAS |
-| `so.yaml` | complete-B variational validation and synthetic observations | SO; also DIRAC when analysis variables change |
-| `dirac.yaml` | complete-B impulse point, control and background variables | DIRAC |
+| `so.yaml` | complete-B variational validation and synthetic observations | SO; DIRAC too if analysis variables change |
+| `dirac.yaml` | complete-B impulse control, paired candidate points and background variables | DIRAC |
 
-PLOTS remains configured by run-specific CLI options (`--plot-level`,
-`--plot-dpi`, variable selection and optional output workspace), so no persistent
-scientific fragment was added.
+PLOTS stays run-specific through CLI options such as `--plot-level` and
+`--plot-dpi`, so it has no persistent scientific fragment.
 
-## 5. UNBALANCE correction
+## 5. UNBALANCE corrections
 
-The original scientific contract contained a user-specific executable path:
-
-```text
-unbalance.executable
-```
-
-Executable location is a platform/build concern. It now belongs to:
+The original scientific contract mixed a user-specific executable path with
+scientific settings. Executable location now belongs to the platform layer:
 
 ```text
 install.unbalance_executable
 ```
 
-in `configs/jaci.yaml`.
-
 Resolution order is:
 
-1. explicit `install.unbalance_executable`;
-2. legacy explicit `unbalance.executable` for backward compatibility;
-3. conventional `install.root/bin/mpasjedi_unbalance_ensemble.x`.
+1. `install.unbalance_executable`;
+2. legacy `unbalance.executable` for backward compatibility;
+3. `install.root/bin/mpasjedi_unbalance_ensemble.x`.
 
-This order avoids silently replacing a valid legacy separate build merely because
-`install.root` is present.
+The scientific fragment now exposes only the three BUMP read flags actually used
+when applying the calibrated vertical balance:
 
-The previous hard-coded developer path was removed from Python and YAML.
+```text
+read local sampling
+read global sampling
+read vertical balance
+```
 
-## 6. Removed obsolete or duplicated settings
+Defaults preserve the validated run. The renderer also retains defaults for old
+contracts that do not yet contain `unbalance.drivers`.
+
+## 6. DIRAC configuration correction
+
+The old contract stored latitude and longitude in separate parallel lists. That
+format is valid for the generated toolbox YAML but fragile for users: inserting
+or removing one value from only one list silently misaligns every later point.
+
+The maintained scientific fragment now uses paired mappings:
+
+```yaml
+points:
+  - {latitude: 30.31011691, longitude: 130.11182691}
+  - {latitude: -34.60250161, longitude: -58.39753137}
+```
+
+The renderer converts these mappings to the validated toolbox fields
+`dirLats`, `dirLons`, `ildir` and `dirvar`. Legacy parallel `latitudes` and
+`longitudes` remain accepted for backward compatibility.
+
+## 7. Removed obsolete or duplicated settings
 
 The active MPAS-BMatrix configuration no longer declares:
 
@@ -179,16 +193,15 @@ pbs.walltime_long
 runtime.output_interval
 ```
 
-These were either upstream `mpaswf` responsibilities or duplicates of active
-settings such as `mesh.nproc`, `pbs.queues.bmatrix` and
-`pbs.walltime.bmatrix`.
+These were upstream `mpaswf` responsibilities or duplicates of active values
+such as `mesh.nproc`, `pbs.queues.bmatrix` and `pbs.walltime.bmatrix`.
 
 The old unused `jaci.yaml` schema (`dates`, `external_data`, `physics`, `nmc`,
-`mpas`, `jedi`, and `bmatrix.use_vertical_balance`) was removed completely.
+`mpas`, `jedi`, and `bmatrix.use_vertical_balance`) was removed.
 
-## 7. Portability correction
+## 8. Portability and environment validation
 
-The default x1.10242 case now uses these environment variables:
+Committed personal paths were replaced by explicit environment variables:
 
 ```text
 BMATRIX_ROOT
@@ -202,33 +215,23 @@ STACK_ROOT
 ```
 
 `STACK_ROOT` is consumed by `scripts/load_jaci_env.sh`; the remaining variables
-are expanded by the YAML loader.
+are expanded by the YAML loader. Missing variables raise `ConfigurationError`
+with the YAML key path and variable name, preventing PBS generation with literal
+`${VARIABLE}` paths.
 
-A missing variable now raises an explicit `ConfigurationError` that reports the
-YAML key path and variable name. This prevents PBS jobs from being generated with
-literal `${VARIABLE}` paths.
+## 9. Inline documentation
 
-## 8. Inline YAML documentation
+Every public and stage YAML now explains:
 
-Every public and stage YAML now documents:
-
-- its purpose;
-- what belongs and does not belong in the file;
+- purpose and ownership;
+- what belongs and does not belong in that file;
 - how it is composed;
-- how users should modify it;
-- rebuild consequences;
-- every active key/parameter immediately next to the value.
+- how each key should be modified;
+- downstream rebuild consequences;
+- canonical JEDI names versus physical NetCDF names;
+- calibration parameters versus validation-only settings.
 
-The comments distinguish:
-
-- canonical JEDI names from physical NetCDF names;
-- site/build values from scientific values;
-- upstream `mpaswf` settings from BFLOW-onward settings;
-- NICAS internal diagnostics from complete-B DIRAC;
-- calibration parameters from SO synthetic validation observations;
-- 3D controls from the 2D surface-pressure control.
-
-## 9. Provenance added to resolved configuration
+## 10. Provenance
 
 `mpas-bmatrix check-config` now reports:
 
@@ -238,49 +241,25 @@ bmatrix_contract_path
 bmatrix_contract_sources
 ```
 
-This records exactly which site, case, aggregator and stage-fragment YAML files
-formed a run.
+These fields record the site base, case, scientific aggregator and every stage
+fragment forming a run.
 
-## 10. Tests added or extended
+## 11. Tests
 
-The test suite covers:
+The configuration tests cover:
 
 ```text
-recursive site/case/scientific includes
+recursive includes
 include ordering and source provenance
 atomic list replacement
-include-cycle rejection
+cycle rejection
 unresolved environment-variable rejection
-complete composition of the repository x1.10242 case
-absence of the obsolete WPS block
-UNBALANCE executable precedence and backward compatibility
+complete x1.10242 composition
+absence of obsolete WPS configuration
+UNBALANCE executable precedence
+UNBALANCE driver defaults/overrides
+paired DIRAC points and legacy-list compatibility
 ```
 
-## 11. User-visible behavior
-
-The normal public commands remain unchanged:
-
-```bash
-mpas-bmatrix check-config --config configs/jaci-x1.10242.yaml
-
-mpas-bmatrix build \
-  --config configs/jaci-x1.10242.yaml \
-  --manifest /path/to/mpas-forecast-manifest.tsv
-```
-
-The fully resolved mapping still contains the same scientific top-level sections
-expected by stage code:
-
-```text
-controls
-bflow
-vbal
-unbalance
-hdiag
-nicas
-single_observation
-dirac
-```
-
-The difference is organizational: users now edit the file that owns the stage or
-platform concern instead of navigating one monolithic contract.
+No scientific job is run by these unit tests. A JACI smoke test remains required
+before merging changes that alter generated stage YAML.
