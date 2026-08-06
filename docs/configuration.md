@@ -72,6 +72,8 @@ bmatrix_contract_sources
 ```
 
 These fields show exactly which YAML documents formed the run configuration.
+A missing environment variable causes `check-config` to fail and reports the
+YAML key that still contains the unresolved reference.
 
 ## 3. Include semantics
 
@@ -97,7 +99,8 @@ Rules:
 3. the declaring file overrides included mappings;
 4. nested mappings are merged recursively;
 5. lists are replaced as complete units;
-6. cyclic includes are rejected.
+6. cyclic includes are rejected;
+7. unresolved environment-variable references are rejected.
 
 Example:
 
@@ -141,7 +144,7 @@ pbs:
 | Vertical balance | `configs/bmatrix/x1.10242/vbal.yaml` |
 | HDIAG statistics | `configs/bmatrix/x1.10242/hdiag.yaml` |
 | NICAS | `configs/bmatrix/x1.10242/nicas.yaml` |
-| Single-observation validation | `configs/bmatrix/x1.10242/single-observation.yaml` |
+| Single-observation validation | `configs/bmatrix/x1.10242/so.yaml` |
 | Complete-B DIRAC | `configs/bmatrix/x1.10242/dirac.yaml` |
 
 ## 5. Rebuild rules
