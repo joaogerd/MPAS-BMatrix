@@ -24,9 +24,14 @@
 #   MONAN_JEDI_INSTALL        MPAS-JEDI/MONAN-JEDI installation prefix.
 #   MONAN_JEDI_UNBALANCE_EXE  Full path to mpasjedi_unbalance_ensemble.x when
 #                             it is not installed under MONAN_JEDI_INSTALL/bin.
+#   STACK_ROOT                Root of the spack-stack checkout/environment.
 #
-# The environment loader itself also requires STACK_ROOT; see
-# scripts/load_jaci_env.sh.
+# PBS note
+# --------
+# PBS does not guarantee that arbitrary variables exported in the login shell
+# are inherited by compute jobs. Variables required by environment.loader must
+# therefore be listed explicitly under environment.variables. The scheduler
+# renders them into every PBS script before sourcing the loader.
 # =============================================================================
 
 project:
@@ -46,6 +51,14 @@ environment:
   # Path to the shell environment loader, relative to project.project_root.
   # The file is sourced inside every generated PBS job.
   loader: scripts/load_jaci_env.sh
+
+  # Variables that must exist inside the PBS job before environment.loader is
+  # sourced. Add another scalar key here only when the loader requires it.
+  # Do not depend on qsub inheriting arbitrary login-shell exports.
+  variables:
+    # Root of spack-stack used by scripts/load_jaci_env.sh to find the JACI
+    # site setup and jedi-mpas-env module tree.
+    STACK_ROOT: ${STACK_ROOT}
 
 install:
   # Installation prefix containing MPAS-JEDI/SABER executables under bin/.
