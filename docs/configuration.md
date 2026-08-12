@@ -74,6 +74,30 @@ bmatrix_contract_sources
 A missing environment variable causes `check-config` to fail before any PBS job
 is generated and reports the unresolved YAML key.
 
+### Variables needed inside PBS jobs
+
+Do not assume that arbitrary variables exported in the login shell will be
+inherited by a PBS compute job. Values required before the JACI environment
+loader runs belong under `environment.variables` in `configs/jaci.yaml`:
+
+```yaml
+environment:
+  loader: scripts/load_jaci_env.sh
+  variables:
+    STACK_ROOT: ${STACK_ROOT}
+```
+
+The scheduler writes these values explicitly into each generated PBS script
+before sourcing the loader:
+
+```bash
+export STACK_ROOT=/resolved/path/to/spack-stack
+source /resolved/path/to/MPAS-BMatrix/scripts/load_jaci_env.sh
+```
+
+This keeps the bootstrap reproducible without copying the entire interactive
+login environment with `qsub -V`.
+
 ## 3. Include semantics
 
 A YAML may include one file:
@@ -135,6 +159,7 @@ pbs:
 | Change | File |
 | --- | --- |
 | JACI queue, walltime, install roots or environment loader | `configs/jaci.yaml` or its referenced environment variables |
+| Variable required by the PBS environment loader | `configs/jaci.yaml` under `environment.variables` |
 | MPAS mesh path, partition count, vertical levels or static files | `configs/jaci-x1.10242.yaml` |
 | Control-variable names/aliases and 3D/2D grouping | `configs/bmatrix/x1.10242/controls.yaml` |
 | NMC/BFLOW preprocessing | `configs/bmatrix/x1.10242/bflow.yaml` |
