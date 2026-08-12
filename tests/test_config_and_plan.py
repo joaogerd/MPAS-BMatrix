@@ -146,6 +146,7 @@ def test_repository_default_config_composes_all_scientific_stages(
         "MPAS_MESH_ROOT": str(tmp_path / "meshes"),
         "MPAS_JEDI_STATIC_ROOT": str(tmp_path / "static"),
         "MONAN_JEDI_SOURCE": str(tmp_path / "MONAN-JEDI"),
+        "STACK_ROOT": str(tmp_path / "spack-stack"),
     }
     for name, value in variables.items():
         monkeypatch.setenv(name, value)
@@ -168,6 +169,7 @@ def test_repository_default_config_composes_all_scientific_stages(
         assert section in config
     assert "wps" not in config
     assert config["install"]["unbalance_executable"] == variables["MONAN_JEDI_UNBALANCE_EXE"]
+    assert config["environment"]["variables"]["STACK_ROOT"] == variables["STACK_ROOT"]
 
 
 def test_plan_from_manifest_is_side_effect_free(tmp_path: Path) -> None:
