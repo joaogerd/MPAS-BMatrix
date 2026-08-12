@@ -78,6 +78,7 @@ JACI site/build configuration shared by case files:
 ```text
 project.*
 environment.loader
+environment.variables
 install.*
 pbs.queues.bmatrix
 pbs.walltime.bmatrix
@@ -85,6 +86,10 @@ pbs.walltime.bmatrix
 
 It contains no BUMP calibration values and no upstream GFS/WPS/forecast options.
 It is an include base, not the normal CLI entry point.
+
+`environment.variables` lists variables that must be exported explicitly inside
+a PBS script before `environment.loader` is sourced. The maintained JACI case
+currently declares `STACK_ROOT` there.
 
 ### `configs/jaci-x1.10242.yaml`
 
@@ -214,12 +219,35 @@ MPAS_JEDI_STATIC_ROOT
 STACK_ROOT
 ```
 
-`STACK_ROOT` is consumed by `scripts/load_jaci_env.sh`; the remaining variables
-are expanded by the YAML loader. Missing variables raise `ConfigurationError`
-with the YAML key path and variable name, preventing PBS generation with literal
-`${VARIABLE}` paths.
+Missing variables raise `ConfigurationError` with the YAML key path and variable
+name, preventing PBS generation with literal `${VARIABLE}` paths.
 
-## 9. Inline documentation
+The JACI base also records `STACK_ROOT` under `environment.variables` so it can be
+rendered into each PBS script before the environment loader is sourced.
+
+## 9. PBS environment propagation found by smoke testing
+
+The first real VBAL smoke submission exposed an HPC-specific boundary that unit
+tests alone could not exercise. `qsub` accepted the job, but it disappeared
+before the application command created `stdout.log`, `stderr.log` or
+`run_vbal.runlog`.
+
+The generated PBS script sourced `scripts/load_jaci_env.sh` before redirecting the
+application command. That loader requires `STACK_ROOT`, while the submit helper
+did not use `qsub -V`. PBS therefore could not be assumed to inherit the custom
+login-shell export.
+
+The scheduler now renders required loader variables explicitly before `source`:
+
+```bash
+export STACK_ROOT=/resolved/path/to/spack-stack
+source /resolved/path/to/MPAS-BMatrix/scripts/load_jaci_env.sh
+```
+
+This is preferred to `qsub -V`: only the required variables are propagated and
+the generated script remains a clear provenance artifact.
+
+## 10. Inline documentation
 
 Every public and stage YAML now explains:
 
@@ -231,7 +259,7 @@ Every public and stage YAML now explains:
 - canonical JEDI names versus physical NetCDF names;
 - calibration parameters versus validation-only settings.
 
-## 10. Provenance
+## 11. Provenance
 
 `mpas-bmatrix check-config` now reports:
 
@@ -244,9 +272,9 @@ bmatrix_contract_sources
 These fields record the site base, case, scientific aggregator and every stage
 fragment forming a run.
 
-## 11. Tests
+## 12. Tests
 
-The configuration tests cover:
+The configuration and scheduler tests cover:
 
 ```text
 recursive includes
@@ -259,7 +287,10 @@ absence of obsolete WPS configuration
 UNBALANCE executable precedence
 UNBALANCE driver defaults/overrides
 paired DIRAC points and legacy-list compatibility
+PBS loader-variable export before the environment loader
+shell quoting of propagated PBS variables
 ```
 
-No scientific job is run by these unit tests. A JACI smoke test remains required
-before merging changes that alter generated stage YAML.
+No full scientific job is run by these unit tests. A JACI smoke test remains
+required before merging changes that alter generated stage YAML or scheduler
+bootstrap behavior.
