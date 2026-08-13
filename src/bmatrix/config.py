@@ -158,7 +158,25 @@ def _load_composed_yaml(path: Path, stack: tuple[Path, ...] = ()) -> tuple[Confi
     return merged, tuple(sources)
 
 
-def _contract_path(platform_path: Path, platform: Mapping[str, Any]) -> Path | None:
+def _contract_declaring_path(platform_path: Path, sources: Sequence[Path]) -> Path:
+    """Return the source YAML that declared the effective contract path.
+
+    Relative ``bmatrix.configuration`` paths belong to the YAML document that
+    declared them, not necessarily to the top-level overlay passed to
+    :func:`load_config`. Sources are inspected in reverse merge order so an
+    explicit overlay declaration wins while an inherited declaration keeps the
+    directory of its original case file.
+    """
+    for source in reversed(tuple(sources)):
+        document = _load_yaml(source)
+        bmatrix = document.get("bmatrix")
+        if isinstance(bmatrix, Mapping) and "configuration" in bmatrix:
+            return source
+    return platform_path
+
+
+def _contract_path(declaring_path: Path, platform: Mapping[str, Any]) -> Path | None:
+    """Resolve the effective scientific-contract path against its declaring YAML."""
     bmatrix = platform.get("bmatrix")
     if bmatrix is None:
         return None
@@ -176,7 +194,7 @@ def _contract_path(platform_path: Path, platform: Mapping[str, Any]) -> Path | N
             "Variáveis de ambiente não definidas em bmatrix.configuration: " + names
         )
     candidate = Path(specification).expanduser()
-    return candidate if candidate.is_absolute() else (platform_path.parent / candidate).resolve()
+    return candidate if candidate.is_absolute() else (declaring_path.parent / candidate).resolve()
 
 
 def load_config(path: str | Path) -> Config:
@@ -199,7 +217,8 @@ def load_config(path: str | Path) -> Config:
     platform_path = Path(path).expanduser().resolve()
     platform_raw, platform_sources = _load_composed_yaml(platform_path)
     platform = expand_env(platform_raw)
-    contract_path = _contract_path(platform_path, platform)
+    contract_declaring_path = _contract_declaring_path(platform_path, platform_sources)
+    contract_path = _contract_path(contract_declaring_path, platform)
 
     if contract_path is None:
         merged = dict(platform)
