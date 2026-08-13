@@ -121,6 +121,7 @@ BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
+  --from-stage vbal \
   --to-stage plots \
   --plot-level 30 \
   --plot-dpi 150 \
