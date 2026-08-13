@@ -1,0 +1,38 @@
+# =============================================================================
+# MPAS-BMatrix scientific contract — UNBALANCE stage
+# =============================================================================
+#
+# Purpose
+# -------
+# Configures the explicit stage between VBAL and HDIAG. The stage reads the
+# calibrated BUMP_VerticalBalance products, applies K2^-1 to each centered
+# perturbation and writes the samplesUnbalanced ensemble consumed by HDIAG.
+#
+# Rebuild boundary
+# ----------------
+# Changes affect UNBALANCE and every downstream stage:
+# HDIAG, NICAS, SO, DIRAC and PLOTS.
+#
+# How to modify it
+# ----------------
+# - Keep executable paths, queues and directories in the platform configuration;
+#   the executable is `install.unbalance_executable` in configs/jaci.yaml.
+# - Change the driver flags only when the format/location of the calibrated VBAL
+#   products changes and validate the generated run_unbalance.yaml on JACI.
+# - pseudo_inverse and dominant_mode remain in vbal.yaml because they define how
+#   the calibrated balance operator is inverted, not where the executable runs.
+# =============================================================================
+
+unbalance:
+  drivers:
+    # Read the rank-local sampling products written by VBAL. The validated flow
+    # stages these files in the UNBALANCE workspace and requires this flag.
+    read local sampling: true
+
+    # The current explicit inversion reads local sampling products and does not
+    # require the global sampling file. Enable only after validating the SABER
+    # contract for a different product layout.
+    read global sampling: false
+
+    # Read the calibrated vertical-balance coefficients (mpas_vbal products).
+    read vertical balance: true

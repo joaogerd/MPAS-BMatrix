@@ -1,72 +1,87 @@
+# =============================================================================
+# MPAS-BMatrix — JACI site/runtime base configuration
+# =============================================================================
+#
+# Purpose
+# -------
+# This file contains settings that are common to MPAS-BMatrix runs on the JACI
+# cluster and do not depend on a particular MPAS mesh or B-matrix experiment.
+# It is a BASE file: users normally pass configs/jaci-x1.10242.yaml to the CLI,
+# and that case file includes this one automatically.
+#
+# How to modify it
+# ----------------
+# - Keep only machine/site/build settings here.
+# - Do not add BUMP/VBAL/HDIAG/NICAS scientific parameters here.
+# - Do not add GFS, WPS, MPAS initialization or forecast settings; those belong
+#   to the upstream mpaswf repository.
+# - Prefer environment variables to committed user-specific absolute paths.
+#
+# Required shell variables before running on JACI
+# ------------------------------------------------
+#   BMATRIX_ROOT              Absolute path to the MPAS-BMatrix checkout.
+#   WORK_ROOT                 Absolute root for generated workflow workspaces.
+#   MONAN_JEDI_INSTALL        MPAS-JEDI/MONAN-JEDI installation prefix.
+#   MONAN_JEDI_UNBALANCE_EXE  Full path to mpasjedi_unbalance_ensemble.x when
+#                             it is not installed under MONAN_JEDI_INSTALL/bin.
+#   STACK_ROOT                Root of the spack-stack checkout/environment.
+#
+# PBS note
+# --------
+# PBS does not guarantee that arbitrary variables exported in the login shell
+# are inherited by compute jobs. Variables required by environment.loader must
+# therefore be listed explicitly under environment.variables. The scheduler
+# renders them into every PBS script before sourcing the loader.
+# =============================================================================
+
 project:
-  root: /p/projetos/monan_das/joao.gerd/projects/mpas-bmatrix-global
-  work_root: /p/projetos/monan_das/joao.gerd/work/mpas-bmatrix-global
-  data_root: /p/projetos/monan_das/joao.gerd/data/mpas-bmatrix-global
+  # Human-readable project identifier used in resolved configuration/provenance.
+  # It does not control product names or scientific behavior.
+  name: MPAS-BMatrix
+
+  # Absolute repository checkout. PBS scripts use this root to source the
+  # repository-local environment.loader path.
+  project_root: ${BMATRIX_ROOT}
+
+  # Absolute root for all generated BFLOW and covariance-stage workspaces.
+  # Changing it moves future outputs; it does not migrate existing workspaces.
+  work_root: ${WORK_ROOT}
 
 environment:
-  stack_root: /p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack
-  stack_env_name: jaci-mpas-jedi-gcc12-craympich
-  stack_module_root: /p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack/envs/jaci-mpas-jedi-gcc12-craympich/modules
-  stack_site_setup: configs/sites/tier2/jaci/setup.sh
-  stack_env_module: cray-mpich/8.1.31/none/none/jedi-mpas-env/1.0.0
+  # Path to the shell environment loader, relative to project.project_root.
+  # The file is sourced inside every generated PBS job.
+  loader: scripts/load_jaci_env.sh
 
-monan_jedi:
-  source: /p/projetos/monan_das/joao.gerd/projects/MONAN-JEDI
-
-  # Diretório de build usado para consultar CMakeCache.txt.
-  # Ajuste este caminho quando a compilação OFF final estiver consolidada.
-  build_dir: /p/projetos/monan_das/joao.gerd/work/MONAN-JEDI/build
-
-  # Instalação operacional usada para rodar MPAS/JEDI.
-  install_root: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas
-
-mpas:
-  double_precision: OFF
-
-  init_atmosphere_model: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas/bin/mpas_init_atmosphere
-  atmosphere_model: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas/bin/mpas_atmosphere
-  build_tables: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas/bin/mpas_atmosphere_build_tables
-
-  share_root: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas/share/MPAS
-  core_atmosphere_share: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas/share/MPAS/core_atmosphere
-  core_init_atmosphere_share: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas/share/MPAS/core_init_atmosphere
-
-jedi:
-  toolbox: /p/projetos/monan_das/joao.gerd/builds/monan-jedi-mpas/bin/mpasjedi_error_covariance_toolbox.x
-
-mesh:
-  name: x1.10242
-  resolution_label: 240km
-  grid: /p/projetos/monan_das/joao.gerd/projects/mpas_meshes/quasi_uniform/x1.10242_240km/mesh/x1.10242.grid.nc
-  graph: /p/projetos/monan_das/joao.gerd/projects/mpas_meshes/quasi_uniform/x1.10242_240km/graph/x1.10242.graph.info
-  nproc: 64
-
-dates:
-  first_cycle: 2025100100
-  last_cycle: 2025100500
-  cycle_interval_hours: 24
-  forecast_hours:
-    - 24
-    - 48
-
-physics:
-  suite: mesoscale_reference
-
-external_data:
-  source: null
-  grib_root: /p/projetos/monan_das/joao.gerd/data/mpas-bmatrix-global/grib
-  intermediate_root: /p/projetos/monan_das/joao.gerd/data/mpas-bmatrix-global/intermediate
-  geog_root: null
-
-nmc:
-  method: f48_minus_f24
+  # Variables that must exist inside the PBS job before environment.loader is
+  # sourced. Add another scalar key here only when the loader requires it.
+  # Do not depend on qsub inheriting arbitrary login-shell exports.
   variables:
-    - eastward_wind
-    - northward_wind
-    - air_temperature
-    - water_vapor_mixing_ratio_wrt_moist_air
-    - air_pressure_at_surface
+    # Root of spack-stack used by scripts/load_jaci_env.sh to find the JACI
+    # site setup and jedi-mpas-env module tree.
+    STACK_ROOT: ${STACK_ROOT}
 
-bmatrix:
-  type: univariate
-  use_vertical_balance: false
+install:
+  # Installation prefix containing MPAS-JEDI/SABER executables under bin/.
+  # Required executables include mpasjedi_error_covariance_toolbox.x and
+  # mpasjedi_variational.x.
+  root: ${MONAN_JEDI_INSTALL}
+
+  # Directory containing MPAS core_atmosphere tables/files copied or linked into
+  # stage workspaces. Usually derived from install.root as shown below.
+  atmosphere_share: ${MONAN_JEDI_INSTALL}/share/MPAS/core_atmosphere
+
+  # Full path to the executable that applies K2^-1 during UNBALANCE.
+  # Export MONAN_JEDI_UNBALANCE_EXE when this executable comes from a separate
+  # build; otherwise set it to ${MONAN_JEDI_INSTALL}/bin/... in your shell.
+  unbalance_executable: ${MONAN_JEDI_UNBALANCE_EXE}
+
+pbs:
+  queues:
+    # PBS queue used by VBAL, UNBALANCE, HDIAG, NICAS, SO and DIRAC jobs.
+    # Change only if the JACI allocation policy or expected job size changes.
+    bmatrix: pesqmidi
+
+  walltime:
+    # Wall-clock request shared by B-matrix PBS jobs. Stage-specific walltimes
+    # may be introduced later if operational evidence justifies them.
+    bmatrix: "02:00:00"

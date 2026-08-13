@@ -30,13 +30,37 @@ def _number_list(value: object, name: str) -> list[float]:
         raise ValueError(f"{name} deve conter apenas números.") from exc
 
 
-def _settings(config: Mapping[str, Any], analysis_variables: list[str]) -> dict[str, object]:
-    """Return validated, explicit DIRAC settings from the scientific contract."""
-    raw = section(config, "dirac")
+def _configured_points(raw: Mapping[str, Any]) -> tuple[list[float], list[float]]:
+    """Read paired DIRAC points or the legacy parallel latitude/longitude lists."""
+    points = raw.get("points")
+    if points is not None:
+        if not isinstance(points, Sequence) or isinstance(points, (str, bytes)) or not points:
+            raise ValueError("dirac.points deve ser uma lista não vazia.")
+        latitudes: list[float] = []
+        longitudes: list[float] = []
+        for item in points:
+            if not isinstance(item, Mapping):
+                raise ValueError("Cada item de dirac.points deve ser um bloco YAML.")
+            try:
+                latitudes.append(float(item["latitude"]))
+                longitudes.append(float(item["longitude"]))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    "Cada item de dirac.points requer latitude e longitude numéricas."
+                ) from exc
+        return latitudes, longitudes
+
     latitudes = _number_list(raw.get("latitudes"), "dirac.latitudes")
     longitudes = _number_list(raw.get("longitudes"), "dirac.longitudes")
     if len(latitudes) != len(longitudes):
         raise ValueError("dirac.latitudes e dirac.longitudes devem ter o mesmo tamanho.")
+    return latitudes, longitudes
+
+
+def _settings(config: Mapping[str, Any], analysis_variables: list[str]) -> dict[str, object]:
+    """Return validated, explicit DIRAC settings from the scientific contract."""
+    raw = section(config, "dirac")
+    latitudes, longitudes = _configured_points(raw)
     index = int(raw.get("index", 1))
     if not 1 <= index <= len(latitudes):
         raise ValueError("dirac.index deve selecionar um ponto configurado.")
@@ -72,9 +96,9 @@ def write_dirac_yaml(
     """Render a full-B DIRAC test for the covariance toolbox.
 
     The file applies the same BUMP_NICAS, StdDev, BUMP_VerticalBalance and
-    Control2Analysis composition used by the SO test.  The ``dirac`` block
-    follows the covariance toolbox contract used by the validated main branch:
-    full point lists plus singular ``ildir``/``dirvar`` selectors.
+    Control2Analysis composition used by the SO test. The ``dirac`` block follows
+    the covariance toolbox contract used by the validated main branch: complete
+    point lists plus singular ``ildir``/``dirvar`` selectors.
     """
     controls = list(control_code_names(config))
     nicas = section(config, "nicas")
@@ -109,7 +133,10 @@ def write_dirac_yaml(
                     },
                     "drivers": {
                         "multivariate strategy": str(
-                            nicas.get("drivers", {}).get("multivariate strategy", "univariate")
+                            nicas.get("drivers", {}).get(
+                                "multivariate strategy",
+                                "univariate",
+                            )
                         ),
                         "read local nicas": True,
                     },
@@ -135,9 +162,14 @@ def write_dirac_yaml(
                             "files prefix": str(vbal.get("files_prefix", "mpas")),
                             "alias": vbal_read_aliases(config),
                         },
-                        "drivers": {"read local sampling": True, "read vertical balance": True},
+                        "drivers": {
+                            "read local sampling": True,
+                            "read vertical balance": True,
+                        },
                         "model": {"nearest 3d level": "bottom"},
-                        "vertical balance": {"vbal": render_vbal_code_relations(config)},
+                        "vertical balance": {
+                            "vbal": render_vbal_code_relations(config)
+                        },
                     },
                 },
             ],
@@ -171,6 +203,13 @@ def write_dirac_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
         config,
         name="DiracTest",
         run_dir=directory,
-        command=("mpiexec", "-n", str(ranks), str(toolbox_exe(config)), "./run_dirac.yaml", "./run_dirac.runlog"),
+        command=(
+            "mpiexec",
+            "-n",
+            str(ranks),
+            str(toolbox_exe(config)),
+            "./run_dirac.yaml",
+            "./run_dirac.runlog",
+        ),
     )
     write_text(directory / "qsub_dirac.bash", render_pbs(spec))

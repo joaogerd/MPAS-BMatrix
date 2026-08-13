@@ -1,0 +1,183 @@
+# =============================================================================
+# MPAS-BMatrix scientific contract — BFLOW preprocessing
+# =============================================================================
+#
+# Purpose
+# -------
+# Configures the conversion of same-valid-time MPAS f048/f024 forecasts into the
+# FULL and perturbation products used to train the static B-matrix.
+#
+# Rebuild boundary
+# ----------------
+# Any change in this file requires regeneration from BFLOW onward because it may
+# alter the training variables, interpolation weights or perturbation values.
+#
+# How to modify it
+# ----------------
+# - Keep lead definitions consistent with the upstream mpaswf manifest.
+# - Product names are stage interfaces; renaming them requires code/tests/docs
+#   updates and invalidates existing workspaces.
+# - Regridding and wind-transform constants must be scientifically reviewed.
+# - Variables listed under copy/derived/validation must use MPAS file names or a
+#   declared control from controls.yaml, as indicated by each key.
+# =============================================================================
+
+bflow:
+  nmc:
+    # Older forecast lead in hours. This is the f048 member in f048 - f024.
+    older_lead_hours: 48
+
+    # Newer forecast lead in hours. This is the f024 member in f048 - f024.
+    newer_lead_hours: 24
+
+  products:
+    # Template containing the MPAS dimensions/metadata used by BFLOW products.
+    template: template_PTB.nc
+
+    # Processed full state corresponding to the older forecast.
+    older_full: FULL_f48.nc
+
+    # Processed full state corresponding to the newer forecast and later used as
+    # the background/template source by covariance stages.
+    newer_full: FULL_f24.nc
+
+    # NMC perturbation product: older_full minus newer_full.
+    perturbation: PTB_f48mf24.nc
+
+  regridding:
+    # Angular spacing, in degrees, of the temporary regular latitude-longitude
+    # grid used for the vector wind transform.
+    resolution_deg: 1.0
+
+    # Stable identifier recorded in the ESMF weights manifest.
+    latlon_grid_id: latlon_1p0
+
+    # Interpretation of MPAS longitude/latitude coordinate units. `auto` detects
+    # radians versus degrees from metadata/values.
+    coordinate_units: auto
+
+    # Coordinate conversion convention used to reproduce the validated legacy
+    # NCL workflow when preparing the temporary regular grid.
+    coordinate_conversion: ncl_legacy
+
+    # [latitude, longitude] of the lower-left temporary-grid cell center.
+    lower_left: [-89.5, -179.5]
+
+    # [latitude, longitude] of the upper-right temporary-grid cell center.
+    upper_right: [89.5, 179.5]
+
+  wind_transform:
+    # MPAS-native zonal-wind variable read from each input forecast.
+    zonal_file_variable: uReconstructZonal
+
+    # MPAS-native meridional-wind variable read from each input forecast.
+    meridional_file_variable: uReconstructMeridional
+
+    # MPAS 3D variable used as a dimension/metadata template for transformed
+    # wind controls.
+    template_file_variable: theta
+
+    # Earth radius used by the numerator side of the validated spectral wind
+    # transformation/scaling.
+    radius_numerator_m: 6371229.0
+
+    # Earth radius used by the denominator side of the validated transformation.
+    radius_denominator_m: 6371220.0
+
+    outputs:
+      stream_function:
+        # Canonical control declared in controls.yaml that receives this output.
+        output_control: air_horizontal_streamfunction
+
+        # NetCDF long_name written to the transformed field.
+        long_name: stream function
+
+        # NetCDF units written to the transformed field.
+        units: m^2 s^(-2)
+
+        # Final multiplicative scale applied after the wind transformation.
+        scale: 1.0
+
+      velocity_potential:
+        # Canonical control declared in controls.yaml that receives this output.
+        output_control: air_horizontal_velocity_potential
+
+        # NetCDF long_name written to the transformed field.
+        long_name: velocity potential
+
+        # NetCDF units written to the transformed field.
+        units: m^2 s^(-2)
+
+        # Sign/scale required by the validated MPAS-JEDI convention.
+        scale: -1.0
+
+  # MPAS-native variables copied unchanged into FULL/PTB-compatible products.
+  # Modify only when downstream validation, derived variables or JEDI state
+  # construction requires a different native field set.
+  copy_variables:
+    - surface_pressure
+    - uReconstructZonal
+    - uReconstructMeridional
+    - qv
+    - qc
+    - qr
+    - qi
+    - qs
+    - qg
+    - pressure_p
+    - pressure_base
+
+  derived_variables:
+    # Total pressure = perturbation pressure + base-state pressure.
+    - output_file: pressure
+      operation: sum
+      inputs: [pressure_p, pressure_base]
+      template_file: pressure_p
+      attributes:
+        long_name: pressure
+        units: Pa
+
+    # Convert MPAS potential temperature into the declared temperature control.
+    - output_control: air_temperature
+      operation: potential_temperature_to_temperature
+      theta_file: theta
+      pressure_file: pressure
+      reference_pressure_pa: 100000.0
+      exponent: 0.2857142857142857
+      template_file: theta
+      attributes:
+        long_name: temperature
+        units: K
+
+    # Convert water-vapor mixing ratio qv to specific humidity.
+    - output_control: water_vapor_mixing_ratio_wrt_moist_air
+      operation: mixing_ratio_to_specific_humidity
+      mixing_ratio_file: qv
+      template_file: qv
+      attributes:
+        long_name: specific humidity
+        units: kg kg-1
+
+  validation:
+    # Minimum variables required in each FULL product.
+    full_required:
+      - stream_function
+      - velocity_potential
+
+    # Minimum variables required in each perturbation product before VBAL.
+    ptb_required:
+      - stream_function
+      - velocity_potential
+      - temperature
+      - spechum
+      - pressure
+      - surface_pressure
+      - uReconstructZonal
+      - uReconstructMeridional
+
+    # Exact dimension order required for transformed 3D controls.
+    dimension_checks:
+      - file: stream_function
+        dimensions: [Time, nCells, nVertLevels]
+      - file: velocity_potential
+        dimensions: [Time, nCells, nVertLevels]

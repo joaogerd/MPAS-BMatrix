@@ -38,6 +38,36 @@ class JobSpec:
     preamble: Sequence[str] = field(default_factory=tuple)
 
 
+def _configured_runtime_environment(environment: Mapping[str, object]) -> dict[str, str]:
+    """Return environment variables that must exist before the loader is sourced.
+
+    Parameters
+    ----------
+    environment
+        The composed ``environment`` YAML section. Optional ``variables`` must be
+        a mapping of shell-variable names to scalar values.
+
+    Returns
+    -------
+    dict[str, str]
+        Variables rendered explicitly into every PBS script before the
+        repository-local environment loader is sourced.
+    """
+    raw = environment.get("variables", {})
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise ValueError("environment.variables deve ser um bloco YAML.")
+    result: dict[str, str] = {}
+    for name, value in raw.items():
+        if not isinstance(name, str) or not name:
+            raise ValueError("Cada nome em environment.variables deve ser uma string não vazia.")
+        if isinstance(value, (Mapping, list, tuple, set)):
+            raise ValueError(f"environment.variables.{name} deve ser um valor escalar.")
+        result[name] = str(value)
+    return result
+
+
 def bmatrix_job_spec(
     config: Mapping[str, object],
     *,
@@ -61,16 +91,33 @@ def bmatrix_job_spec(
     walltime = str(pbs.get("walltime", {}).get("bmatrix", pbs.get("walltime_short", "00:10:00")))
     loader = str(environment["loader"])
     project_root = str(project["project_root"])
+
+    runtime_environment = _configured_runtime_environment(environment)
+    runtime_environment.update(
+        {
+            "OMP_NUM_THREADS": "1",
+            "GFORTRAN_CONVERT_UNIT": "big_endian:101-200",
+            "FI_CXI_RX_MATCH_MODE": "hybrid",
+        }
+    )
+
+    bootstrap = tuple(
+        [
+            *(f"export {name}={shlex.quote(value)}" for name, value in _configured_runtime_environment(environment).items()),
+            f"source {shlex.quote(str(Path(project_root) / loader))}",
+        ]
+    )
+
     return JobSpec(
         name=name,
         working_directory=run_dir,
         command=tuple(command),
         resources=ResourceRequest(mpi_ranks=ranks, walltime=walltime, queue=queue),
-        bootstrap=(f'source {shlex.quote(str(Path(project_root) / loader))}',),
+        bootstrap=bootstrap,
         environment={
-            "OMP_NUM_THREADS": "1",
-            "GFORTRAN_CONVERT_UNIT": "big_endian:101-200",
-            "FI_CXI_RX_MATCH_MODE": "hybrid",
+            "OMP_NUM_THREADS": runtime_environment["OMP_NUM_THREADS"],
+            "GFORTRAN_CONVERT_UNIT": runtime_environment["GFORTRAN_CONVERT_UNIT"],
+            "FI_CXI_RX_MATCH_MODE": runtime_environment["FI_CXI_RX_MATCH_MODE"],
         },
         stdout=stdout,
         stderr=stderr,

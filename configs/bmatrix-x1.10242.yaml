@@ -1,311 +1,55 @@
-# Contrato científico da matriz B estática MPAS-JEDI/SABER.
-# Caminhos, malha, PBS e ambiente permanecem em jaci-x1.10242.yaml.
-# `code` é o nome canônico usado pelo MPAS-JEDI/SABER.
-# `file` é o nome físico presente nos PTBs e nos arquivos MPAS NetCDF.
+# =============================================================================
+# MPAS-BMatrix — scientific-contract aggregator for x1.10242
+# =============================================================================
+#
+# Purpose
+# -------
+# This file is the SINGLE scientific-contract path referenced by
+# configs/jaci-x1.10242.yaml. It does not duplicate the stage parameters. Instead,
+# it composes one documented fragment per pipeline stage.
+#
+# The include order follows the scientific workflow:
+#
+#   controls -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC
+#
+# PLOTS currently receives its user options from the CLI and has no scientific
+# YAML fragment.
+#
+# How to modify it
+# ----------------
+# - For a normal parameter change, edit only the matching file under
+#   configs/bmatrix/x1.10242/.
+# - Add a new include here when a new configurable stage is introduced.
+# - Include paths are resolved relative to this file.
+# - Files are merged in the listed order; this file overrides included values.
+# - YAML lists are atomic: a later declaration replaces an earlier list instead
+#   of concatenating it.
+# - Keep this file short so users can immediately see the configuration layout.
+#
+# Stage fragments
+# ---------------
+# controls.yaml   canonical/file names and 3D/2D dimensions
+# bflow.yaml      NMC preprocessing, products and derived variables
+# vbal.yaml       vertical-balance calibration
+# unbalance.yaml  K2^-1 application/read contract; executable belongs to JACI
+# hdiag.yaml      variance and correlation diagnostics
+# nicas.yaml      NICAS calibration and internal diagnostics
+# so.yaml         complete-B variational single-observation validation
+# dirac.yaml      complete-B impulse-response validation
+# =============================================================================
 
-schema_version: 1
+# Version of the MPAS-BMatrix scientific-contract layout. Increment only when a
+# structural change requires migration logic or coordinated downstream updates.
+schema_version: 2
 
-controls:
-  - code: air_horizontal_streamfunction
-    file: stream_function
-    dimensions: 3d
-  - code: air_horizontal_velocity_potential
-    file: velocity_potential
-    dimensions: 3d
-  - code: air_temperature
-    file: temperature
-    dimensions: 3d
-  - code: water_vapor_mixing_ratio_wrt_moist_air
-    file: spechum
-    dimensions: 3d
-  - code: air_pressure_at_surface
-    file: surface_pressure
-    dimensions: 2d
-
-vbal:
-  files_prefix: mpas
-  group_variable_order:
-    - air_horizontal_streamfunction
-    - water_vapor_mixing_ratio_wrt_moist_air
-    - air_horizontal_velocity_potential
-    - air_temperature
-    - air_pressure_at_surface
-  drivers:
-    write_local_sampling: true
-    write_global_sampling: true
-    compute_vertical_covariance: true
-    compute_vertical_balance: true
-    write_vertical_balance: true
-  sampling:
-    computation grid size: 12000
-    diagnostic grid size: 200
-    reduced levels: 55
-    averaging latitude width: 10.0
-  relations:
-    - balanced_variable: air_horizontal_velocity_potential
-      unbalanced_variable: air_horizontal_streamfunction
-      diagonal_regression: true
-    - balanced_variable: air_temperature
-      unbalanced_variable: air_horizontal_streamfunction
-    - balanced_variable: air_pressure_at_surface
-      unbalanced_variable: air_horizontal_streamfunction
-  pseudo_inverse: true
-  dominant_mode: 20
-
-unbalance:
-  executable: /p/projetos/monan_das/joao.gerd/projects/MONAN-JEDI/build-unbalance/bin/mpasjedi_unbalance_ensemble.x
-
-hdiag:
-  min_members: 4
-  files_prefix: mpas
-  bump_vunit: avgheight
-  iterative_ensemble_loading: true
-  drivers:
-    compute covariance: true
-    compute correlation: true
-    multivariate strategy: univariate
-    write global sampling: true
-    compute variance: true
-    compute moments: true
-    write diagnostics: true
-  sampling:
-    computation grid size: 12000
-    diagnostic grid size: 1000
-    distance classes: 10
-    distance class width: 1000000.0
-    reduced levels: 10
-    local diagnostic: true
-    averaging length-scale: 3000000.0
-  variance:
-    objective_filtering: true
-    filtering_iterations: 1
-    initial_length_scales:
-      - variables:
-          - air_horizontal_streamfunction
-          - air_horizontal_velocity_potential
-          - air_temperature
-          - water_vapor_mixing_ratio_wrt_moist_air
-          - air_pressure_at_surface
-        value: 3000000.0
-  fit:
-    horizontal filtering length-scale: 3000000.0
-
-nicas:
-  files_prefix: mpas
-  bump_vunit: avgheight
-  dirac_level_from_top: 20
-  drivers:
-    multivariate strategy: univariate
-    compute nicas: true
-    write local nicas: true
-    write global nicas: true
-    write nicas grids: true
-    internal dirac test: true
-  nicas:
-    resolution: 8
-    max horizontal grid size: 15000
-  dirac_points:
-    - longitude: -45.0
-      latitude: 0.0
-      variable: air_temperature
-    - longitude: -135.0
-      latitude: 0.0
-      variable: air_temperature
-    - longitude: 45.0
-      latitude: 0.0
-      variable: air_temperature
-    - longitude: 135.0
-      latitude: 0.0
-      variable: air_temperature
-    - longitude: -135.0
-      latitude: 45.0
-      variable: air_temperature
-    - longitude: -45.0
-      latitude: 45.0
-      variable: air_temperature
-    - longitude: 45.0
-      latitude: 45.0
-      variable: air_temperature
-    - longitude: 135.0
-      latitude: 45.0
-      variable: air_temperature
-    - longitude: -135.0
-      latitude: -45.0
-      variable: air_temperature
-    - longitude: -45.0
-      latitude: -45.0
-      variable: air_temperature
-    - longitude: 45.0
-      latitude: -45.0
-      variable: air_temperature
-    - longitude: 135.0
-      latitude: -45.0
-      variable: air_temperature
-
-dirac:
-  # Complete-B diagnostic.  The variable is a declared control; background
-  # variables are the MPAS fields produced after Control2Analysis.
-  ndir: 1
-  index: 10
-  variable: air_temperature
-  background_variables:
-    - eastward_wind
-    - northward_wind
-    - air_temperature
-    - water_vapor_mixing_ratio_wrt_moist_air
-    - air_pressure_at_surface
-    - air_pressure
-    - u
-    - rho
-    - theta
-    - pressure_p
-  latitudes: [30.31011691, 26.56505123, 35.68501691, 19.01699038, 19.44244244, 31.21645245, -23.55867959, 40.74997906, 24.86999229, -34.60250161, 28.6699929, 55.75216412, 41.10499615, 23.72305971, 30.04996035, 37.5663491, 22.4949693, 39.92889223, -6.174417705, 33.98997825, 51.49999473, 35.67194277]
-  longitudes: [130.11182691, -102.95294521, 139.7514074, 72.8569893, -99.1309882, 121.4365047, -46.62501998, -73.98001693, 66.99000891, -58.39753137, 77.23000403, 37.61552283, 29.01000159, 90.40857947, 31.24996822, 126.999731, 88.32467566, 116.3882857, 106.8294376, -118.1799805, -0.116721844, 51.42434403]
-
-single_observation:
-  window_hours_before_analysis: 3
-  window_hours: 6
-  minimizer: DRPCG
-  ninner: 10
-  gradient_norm_reduction: 1e-3
-  analysis_variables:
-    - eastward_wind
-    - northward_wind
-    - air_temperature
-    - water_vapor_mixing_ratio_wrt_moist_air
-    - air_pressure_at_surface
-  background_variables:
-    - eastward_wind
-    - northward_wind
-    - air_temperature
-    - water_vapor_mixing_ratio_wrt_moist_air
-    - air_pressure_at_surface
-    - air_pressure
-    - spechum
-    - surface_pressure
-    - temperature
-    - uReconstructMeridional
-    - uReconstructZonal
-    - theta
-    - rho
-    - u
-    - qv
-    - pressure
-    - pressure_p
-  observations:
-    temperature:
-      name: SO_T
-      simulated_variable: airTemperature
-      latitude: 30.3061
-      longitude: 130.085
-      pressure: 78775.95
-      error: 0.8
-      value: 284.5912
-      output_file: obsout_SO_T.h5
-    eastward_wind:
-      name: SO_U
-      simulated_variable: windEastward
-      latitude: 57.7699
-      longitude: 357.713
-      pressure: 77693.09
-      error: 1.0
-      value: 0.7250047
-      output_file: obsout_SO_U.h5
-  variants:
-    default: [temperature, eastward_wind]
-    t-only: [temperature]
-    u-only: [eastward_wind]
-
-# Configuração física e estatística do pré-processamento BFLOW/NMC.
-# Alterações neste bloco exigem gerar um novo workspace BFLOW.
-bflow:
-  nmc:
-    older_lead_hours: 48
-    newer_lead_hours: 24
-    older_label: f48
-    newer_label: f24
-  products:
-    template: template_PTB.nc
-    older_full: FULL_f48.nc
-    newer_full: FULL_f24.nc
-    perturbation: PTB_f48mf24.nc
-  regridding:
-    # ESMF/ESMPy generator configuration (no NCL or SCRIP executable).
-    resolution_deg: 1.0
-    latlon_grid_id: latlon_1p0
-    coordinate_units: auto
-    coordinate_conversion: ncl_legacy
-    lower_left: [-89.5, -179.5]
-    upper_right: [89.5, 179.5]
-  wind_transform:
-    zonal_file_variable: uReconstructZonal
-    meridional_file_variable: uReconstructMeridional
-    template_file_variable: theta
-    radius_numerator_m: 6371229.0
-    radius_denominator_m: 6371220.0
-    outputs:
-      stream_function:
-        output_control: air_horizontal_streamfunction
-        long_name: stream function
-        units: m^2 s^(-2)
-        scale: 1.0
-      velocity_potential:
-        output_control: air_horizontal_velocity_potential
-        long_name: velocity potential
-        units: m^2 s^(-2)
-        scale: -1.0
-  copy_variables:
-    - surface_pressure
-    - uReconstructZonal
-    - uReconstructMeridional
-    - qv
-    - qc
-    - qr
-    - qi
-    - qs
-    - qg
-    - pressure_p
-    - pressure_base
-  derived_variables:
-    - output_file: pressure
-      operation: sum
-      inputs: [pressure_p, pressure_base]
-      template_file: pressure_p
-      attributes:
-        long_name: pressure
-        units: Pa
-    - output_control: air_temperature
-      operation: potential_temperature_to_temperature
-      theta_file: theta
-      pressure_file: pressure
-      reference_pressure_pa: 100000.0
-      exponent: 0.2857142857142857
-      template_file: theta
-      attributes:
-        long_name: temperature
-        units: K
-    - output_control: water_vapor_mixing_ratio_wrt_moist_air
-      operation: mixing_ratio_to_specific_humidity
-      mixing_ratio_file: qv
-      template_file: qv
-      attributes:
-        long_name: specific humidity
-        units: kg kg-1
-  validation:
-    full_required:
-      - stream_function
-      - velocity_potential
-    ptb_required:
-      - stream_function
-      - velocity_potential
-      - temperature
-      - spechum
-      - pressure
-      - surface_pressure
-      - uReconstructZonal
-      - uReconstructMeridional
-    dimension_checks:
-      - file: stream_function
-        dimensions: [Time, nCells, nVertLevels]
-      - file: velocity_potential
-        dimensions: [Time, nCells, nVertLevels]
+# Compose the complete scientific mapping. Each included file documents every
+# key it owns and its downstream rebuild boundary.
+include:
+  - bmatrix/x1.10242/controls.yaml
+  - bmatrix/x1.10242/bflow.yaml
+  - bmatrix/x1.10242/vbal.yaml
+  - bmatrix/x1.10242/unbalance.yaml
+  - bmatrix/x1.10242/hdiag.yaml
+  - bmatrix/x1.10242/nicas.yaml
+  - bmatrix/x1.10242/so.yaml
+  - bmatrix/x1.10242/dirac.yaml

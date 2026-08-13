@@ -1,0 +1,78 @@
+# =============================================================================
+# MPAS-BMatrix scientific contract — complete-B DIRAC validation
+# =============================================================================
+#
+# Purpose
+# -------
+# Configures a covariance-toolbox impulse response using the complete static B:
+# NICAS + StdDev + VBAL + Control2Analysis. This is distinct from the internal
+# NICAS-only diagnostic configured in nicas.yaml.
+#
+# Rebuild boundary
+# ----------------
+# Changes affect DIRAC and its plots. They do not recalibrate VBAL/HDIAG/NICAS.
+#
+# How to modify it
+# ----------------
+# - variable must be a canonical control declared in controls.yaml.
+# - index is one-based and selects one item from points.
+# - keep each latitude/longitude pair in the same mapping; the renderer converts
+#   this readable representation to the validated toolbox contract
+#   dirLats/dirLons plus singular ildir/dirvar selectors.
+# - background_variables must include every analysis variable declared in
+#   so.yaml because DIRAC applies the same Control2Analysis.
+# =============================================================================
+
+dirac:
+  # Number of impulses requested from the toolbox. The maintained workflow uses
+  # one selected point/variable per run.
+  ndir: 1
+
+  # One-based position selected from points. With the current list, index 10
+  # selects Buenos Aires (-34.60250161, -58.39753137).
+  index: 10
+
+  # Canonical B control receiving the impulse.
+  variable: air_temperature
+
+  # Variables available in the background State used by the complete-B test.
+  # The list must cover single_observation.analysis_variables and any additional
+  # native/derived MPAS fields needed by geometry or variable changes.
+  background_variables:
+    - eastward_wind
+    - northward_wind
+    - air_temperature
+    - water_vapor_mixing_ratio_wrt_moist_air
+    - air_pressure_at_surface
+    - air_pressure
+    - u
+    - rho
+    - theta
+    - pressure_p
+
+  # Candidate impulse points. Coordinates are degrees north/east; negative
+  # longitude values represent west. Keeping each pair together prevents the
+  # silent latitude/longitude misalignment possible with parallel lists.
+  points:
+    - {latitude: 30.31011691, longitude: 130.11182691}
+    - {latitude: 26.56505123, longitude: -102.95294521}
+    - {latitude: 35.68501691, longitude: 139.7514074}
+    - {latitude: 19.01699038, longitude: 72.8569893}
+    - {latitude: 19.44244244, longitude: -99.1309882}
+    - {latitude: 31.21645245, longitude: 121.4365047}
+    - {latitude: -23.55867959, longitude: -46.62501998}
+    - {latitude: 40.74997906, longitude: -73.98001693}
+    - {latitude: 24.86999229, longitude: 66.99000891}
+    - {latitude: -34.60250161, longitude: -58.39753137}
+    - {latitude: 28.6699929, longitude: 77.23000403}
+    - {latitude: 55.75216412, longitude: 37.61552283}
+    - {latitude: 41.10499615, longitude: 29.01000159}
+    - {latitude: 23.72305971, longitude: 90.40857947}
+    - {latitude: 30.04996035, longitude: 31.24996822}
+    - {latitude: 37.5663491, longitude: 126.999731}
+    - {latitude: 22.4949693, longitude: 88.32467566}
+    - {latitude: 39.92889223, longitude: 116.3882857}
+    - {latitude: -6.174417705, longitude: 106.8294376}
+    - {latitude: 33.98997825, longitude: -118.1799805}
+    - {latitude: 51.49999473, longitude: -0.116721844}
+    - {latitude: 35.67194277, longitude: 51.42434403}
