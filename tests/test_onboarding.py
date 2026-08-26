@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import yaml
 
+import bmatrix.onboarding as onboarding
 from bmatrix.cli import build_parser, main
 from bmatrix.onboarding import discover_runtime, doctor_checks, save_setup
 
@@ -46,6 +47,25 @@ def test_workspace_argument_wins_during_setup_discovery(monkeypatch, tmp_path):
 
     assert resolved["WORK_ROOT"].value == str(requested_workspace)
     assert resolved["WORK_ROOT"].source == "argument"
+
+
+def test_jaci_discovery_prefers_current_monan_jedi_install_name(monkeypatch):
+    calls = []
+    monkeypatch.setattr(onboarding, "_prefix_from_command", lambda _command: None)
+    monkeypatch.setattr(onboarding, "_latest_glob", lambda _pattern: None)
+
+    def capture_candidates(candidates):
+        values = tuple(candidates)
+        calls.append(values)
+        return None
+
+    monkeypatch.setattr(onboarding, "_first_existing", capture_candidates)
+
+    onboarding.discover_runtime(site="jaci")
+
+    install_candidates = calls[0]
+    assert install_candidates[0].name == "monan-jedi"
+    assert install_candidates[1].name == "monan-jedi-mpas"
 
 
 def test_paths_reports_partial_discovery_without_loading_config(monkeypatch, capsys, tmp_path):
