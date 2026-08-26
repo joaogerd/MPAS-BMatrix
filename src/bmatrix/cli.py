@@ -308,7 +308,7 @@ def _paths(args: argparse.Namespace) -> int:
             print()
             _print_discovery(discovery)
             print()
-            print("Configuration-specific file paths cannot be fully expanded yet:")
+            print("Configuration-specific file paths cannot be fully expanded yet.")
             print(f"  {exc}")
         return 1
 
