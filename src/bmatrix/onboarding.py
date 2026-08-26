@@ -37,7 +37,7 @@ class ResolvedPath:
 
     @property
     def exists(self) -> bool:
-        return self.path.exists()
+        return bool(self.value) and self.path.exists()
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +114,10 @@ def _first_existing(candidates: Iterable[Path]) -> Path | None:
 
 
 def _latest_glob(pattern: str) -> Path | None:
-    candidates = sorted(Path("/").glob(pattern.lstrip("/")), key=lambda item: item.stat().st_mtime if item.exists() else 0)
+    candidates = sorted(
+        Path("/").glob(pattern.lstrip("/")),
+        key=lambda item: item.stat().st_mtime if item.exists() else 0,
+    )
     return candidates[-1].resolve() if candidates else None
 
 
@@ -131,36 +134,44 @@ def _resolve(
     *,
     description: str,
     explicit: str | None = None,
-    derived: Path | None = None,
     discovered: Path | None = None,
-    default: Path | None = None,
 ) -> ResolvedPath:
     if explicit:
         return ResolvedPath(name, str(Path(explicit).expanduser()), "environment", description)
-    if derived is not None:
-        return ResolvedPath(name, str(derived), "derived", description)
     if discovered is not None:
         return ResolvedPath(name, str(discovered), "discovered", description)
-    if default is not None:
-        return ResolvedPath(name, str(default), "default", description)
     return ResolvedPath(name, "", "unresolved", description)
 
 
-def discover_runtime(*, site: str | None = None, workspace: str | Path | None = None) -> RuntimeDiscovery:
+def _work_root(
+    site: str,
+    saved: Mapping[str, str],
+    workspace: str | Path | None,
+) -> ResolvedPath:
+    description = "Raiz persistente dos workspaces e produtos gerados pelo usuário."
+    if os.environ.get("WORK_ROOT"):
+        return ResolvedPath("WORK_ROOT", os.environ["WORK_ROOT"], "environment", description)
+    if workspace is not None:
+        return ResolvedPath("WORK_ROOT", str(Path(workspace).expanduser()), "argument", description)
+    if saved.get("workspace"):
+        return ResolvedPath("WORK_ROOT", saved["workspace"], "user-config", description)
+    return ResolvedPath("WORK_ROOT", str(default_workspace(site)), "site-default", description)
+
+
+def discover_runtime(
+    *,
+    site: str | None = None,
+    workspace: str | Path | None = None,
+) -> RuntimeDiscovery:
     """Resolve runtime roots using explicit overrides first and site conventions second."""
     active_site = detect_site(site)
     saved = _read_user_setup()
     user = getpass.getuser()
     jaci_user_root = Path("/p/projetos/monan_das") / user
 
-    work_override = os.environ.get("WORK_ROOT") or (str(workspace) if workspace else None) or saved.get("workspace")
-
     install_discovered = _prefix_from_command("mpasjedi_error_covariance_toolbox.x")
     if install_discovered is None and active_site == "jaci":
         install_discovered = _first_existing((jaci_user_root / "builds" / "monan-jedi-mpas",))
-
-    install_value = os.environ.get("MONAN_JEDI_INSTALL")
-    install_path = Path(install_value).expanduser() if install_value else install_discovered
 
     source_discovered = None
     mesh_discovered = None
@@ -172,7 +183,10 @@ def discover_runtime(*, site: str | None = None, workspace: str | Path | None = 
         static_discovered = _first_existing(
             (
                 jaci_user_root / "external-inputs" / "MPAS-BMatrix" / "x1.10242" / "static-files",
-                jaci_user_root / "external-inputs" / "mpasjedi_tutorial202509NCAR" / "MPAS_namelist_stream_physics_files",
+                jaci_user_root
+                / "external-inputs"
+                / "mpasjedi_tutorial202509NCAR"
+                / "MPAS_namelist_stream_physics_files",
             )
         )
         stack_discovered = _latest_glob(
@@ -181,56 +195,43 @@ def discover_runtime(*, site: str | None = None, workspace: str | Path | None = 
         if stack_discovered is None:
             stack_discovered = _first_existing((jaci_user_root / "work" / "spack-stack",))
 
-    unbalance_derived = None
-    if install_path:
-        candidate = install_path / "bin" / "mpasjedi_unbalance_ensemble.x"
-        if candidate.exists():
-            unbalance_derived = candidate.resolve()
-    if unbalance_derived is None:
-        command = shutil.which("mpasjedi_unbalance_ensemble.x")
-        if command:
-            unbalance_derived = Path(command).resolve()
+    bmatrix_description = "Checkout do MPAS-BMatrix usado pela CLI e pelos scripts PBS."
+    if os.environ.get("BMATRIX_ROOT"):
+        bmatrix_root = ResolvedPath(
+            "BMATRIX_ROOT", os.environ["BMATRIX_ROOT"], "environment", bmatrix_description
+        )
+    else:
+        bmatrix_root = ResolvedPath(
+            "BMATRIX_ROOT", str(repository_root()), "package", bmatrix_description
+        )
 
     values = (
-        _resolve(
-            "BMATRIX_ROOT",
-            description="Checkout do MPAS-BMatrix usado pela CLI e pelos scripts PBS.",
-            explicit=os.environ.get("BMATRIX_ROOT"),
-            derived=repository_root(),
-        ),
-        _resolve(
-            "WORK_ROOT",
-            description="Raiz persistente dos workspaces e produtos gerados pelo usuário.",
-            explicit=work_override,
-            default=default_workspace(active_site),
-        ),
+        bmatrix_root,
+        _work_root(active_site, saved, workspace),
         _resolve(
             "MONAN_JEDI_INSTALL",
             description="Prefixo da instalação MPAS-JEDI/SABER que contém bin/ e share/.",
-            explicit=install_value,
+            explicit=os.environ.get("MONAN_JEDI_INSTALL"),
             discovered=install_discovered,
         ),
         _resolve(
-            "MONAN_JEDI_UNBALANCE_EXE",
-            description="Executável que aplica K2^-1 às perturbações; derivado da instalação quando possível.",
-            explicit=os.environ.get("MONAN_JEDI_UNBALANCE_EXE"),
-            derived=unbalance_derived,
-        ),
-        _resolve(
             "MPAS_MESH_ROOT",
-            description="Raiz das malhas MPAS; no futuro será substituída pelo catálogo de recursos.",
+            description="Raiz das malhas MPAS; será substituída pelo catálogo de recursos.",
             explicit=os.environ.get("MPAS_MESH_ROOT"),
             discovered=mesh_discovered,
         ),
         _resolve(
             "MPAS_JEDI_STATIC_ROOT",
-            description="Arquivos estáticos validados da malha; no futuro virão de um resource bundle.",
+            description="Arquivos estáticos validados; futuramente virão de um resource bundle.",
             explicit=os.environ.get("MPAS_JEDI_STATIC_ROOT"),
             discovered=static_discovered,
         ),
         _resolve(
             "MONAN_JEDI_SOURCE",
-            description="Checkout MONAN-JEDI usado apenas pelo legado geovars/keptvars; será removido do runtime.",
+            description=(
+                "Checkout MONAN-JEDI usado apenas pelo legado geovars/keptvars; "
+                "será removido do runtime."
+            ),
             explicit=os.environ.get("MONAN_JEDI_SOURCE"),
             discovered=source_discovered,
         ),
@@ -271,7 +272,11 @@ def save_setup(*, site: str, workspace: str | Path, path: Path = USER_CONFIG) ->
     return target
 
 
-def setup_environment(*, site: str, workspace: str | Path | None = None) -> tuple[Path, RuntimeDiscovery]:
+def setup_environment(
+    *,
+    site: str,
+    workspace: str | Path | None = None,
+) -> tuple[Path, RuntimeDiscovery]:
     """Create the user workspace and persist the minimal site/workspace selection."""
     active_site = detect_site(site)
     root = Path(workspace).expanduser() if workspace else default_workspace(active_site)
@@ -305,7 +310,7 @@ def config_path_rows(config: Mapping[str, object]) -> list[tuple[str, str, str]]
     add("MPAS graph", mesh, "graph", "grafo usado no particionamento MPI")
     add("Partitions", mesh, "partitions_dir", "partições METIS por número de ranks")
     add("Invariant", static, "invariant", "estado estático/invariante da malha")
-    add("Static files", static, "tutorial_physics_files", "namelist, streams e arquivos auxiliares")
+    add("Static files", static, "tutorial_physics_files", "namelist, streams e auxiliares")
     add("geovars.yaml", static, "geovars", "definições de GeoVaLs do MPAS-JEDI")
     add("keptvars.yaml", static, "keptvars", "variáveis preservadas pelo MPAS-JEDI")
     add("spack-stack", variables, "STACK_ROOT", "ambiente JACI usado nos jobs PBS")
@@ -319,10 +324,12 @@ def doctor_checks(config: Mapping[str, object]) -> list[tuple[str, Path, str]]:
     mesh = config.get("mesh", {})
     if isinstance(mesh, Mapping) and mesh.get("graph") and mesh.get("nproc"):
         graph = Path(str(mesh["graph"])).expanduser()
+        partitions = Path(str(mesh.get("partitions_dir", graph.parent))).expanduser()
+        nproc = int(mesh["nproc"])
         checks.append(
             (
-                f"MPI partition np{int(mesh['nproc'])}",
-                Path(str(config.get("mesh", {}).get("partitions_dir", graph.parent))) / f"{graph.name}.part.{int(mesh['nproc'])}",
+                f"MPI partition np{nproc}",
+                partitions / f"{graph.name}.part.{nproc}",
                 "partição da malha compatível com os ranks configurados",
             )
         )
