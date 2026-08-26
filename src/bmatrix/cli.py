@@ -4,20 +4,42 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict
 import json
+import os
 import sys
 from pathlib import Path
 
-from .config import load_config
 from .errors import BMatrixError
+from .onboarding import (
+    SUPPORTED_SITES,
+    config_path_rows,
+    discover_runtime,
+    doctor_checks,
+    dump_json,
+    load_resource_catalog,
+    load_runtime_config,
+    repository_root,
+    resolution_warnings,
+    resource_contract_checks,
+    setup_environment,
+)
 from .pipeline import BuildRequest, STAGES, build, generate_weights, plan, validate
 from .plots_core.runner import generate_plots
 
-DEFAULT_CONFIG = "configs/jaci-x1.10242.yaml"
+DEFAULT_CONFIG = str(repository_root() / "configs" / "jaci-x1.10242.yaml")
+_DOMAIN_ERRORS = (BMatrixError, FileNotFoundError, ValueError, OSError, RuntimeError)
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", default=DEFAULT_CONFIG, help="YAML de plataforma que referencia o contrato científico.")
-    parser.add_argument("--bflow-workspace", type=Path, help="Workspace BFLOW; quando omitido é determinístico.")
+    parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG,
+        help="YAML de plataforma que referencia o contrato científico.",
+    )
+    parser.add_argument(
+        "--bflow-workspace",
+        type=Path,
+        help="Workspace BFLOW; quando omitido é determinístico.",
+    )
 
 
 def _add_pair_source(parser: argparse.ArgumentParser) -> None:
@@ -48,17 +70,76 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    check = sub.add_parser("check-config", help="Valida e mostra a configuração resolvida.")
+    setup = sub.add_parser(
+        "setup",
+        help="Configura o mínimo necessário para usar MPAS-BMatrix no site selecionado.",
+    )
+    setup.add_argument("--site", choices=SUPPORTED_SITES, default="jaci")
+    setup.add_argument("--workspace", type=Path, help="Raiz de trabalho; no JACI há um default por usuário.")
+    setup.add_argument("--resource", help="Recurso lógico selecionado; padrão vem do site profile.")
+    setup.add_argument(
+        "--monan-jedi-install",
+        type=Path,
+        help="Override avançado para uma instalação MONAN-JEDI fora do padrão do site.",
+    )
+    setup.add_argument(
+        "--mesh-root",
+        type=Path,
+        help="Override avançado para a raiz física das malhas.",
+    )
+    setup.add_argument(
+        "--static-root",
+        type=Path,
+        help="Override avançado para a raiz dos arquivos estáticos.",
+    )
+    setup.add_argument(
+        "--monan-jedi-source",
+        type=Path,
+        help="Override transitório para o checkout que fornece geovars/keptvars.",
+    )
+    setup.add_argument(
+        "--stack-root",
+        type=Path,
+        help="Override avançado para o spack-stack usado no runtime.",
+    )
+    setup.set_defaults(handler=_setup)
+
+    doctor = sub.add_parser(
+        "doctor",
+        help="Verifica ambiente, executáveis, malha e arquivos estáticos antes de rodar.",
+    )
+    doctor.add_argument("--config", default=DEFAULT_CONFIG)
+    doctor.add_argument("--site", choices=SUPPORTED_SITES)
+    doctor.add_argument("--json", action="store_true", help="Emite diagnóstico estruturado em JSON.")
+    doctor.set_defaults(handler=_doctor)
+
+    paths = sub.add_parser(
+        "paths",
+        help="Mostra os caminhos resolvidos e explica o papel de cada recurso.",
+    )
+    paths.add_argument("--config", default=DEFAULT_CONFIG)
+    paths.add_argument("--site", choices=SUPPORTED_SITES)
+    paths.add_argument("--json", action="store_true", help="Emite os caminhos em JSON.")
+    paths.set_defaults(handler=_paths)
+
+    check = sub.add_parser("check-config", help="Valida e resume a configuração resolvida.")
     check.add_argument("--config", default=DEFAULT_CONFIG)
+    check.add_argument("--json", action="store_true", help="Mostra a configuração completa em JSON.")
     check.set_defaults(handler=_check_config)
 
-    weights = sub.add_parser("weights", help="Gera apenas pesos ESMPy MPAS <-> lat-lon no workspace BFLOW.")
+    weights = sub.add_parser(
+        "weights",
+        help="Gera apenas pesos ESMPy MPAS <-> lat-lon no workspace BFLOW.",
+    )
     _add_common(weights)
     _add_pair_source(weights)
     weights.add_argument("--force", action="store_true", help="Regenera ambos os arquivos de peso.")
     weights.set_defaults(handler=_weights)
 
-    build_command = sub.add_parser("build", help="Executa BFLOW, VBAL, UNBALANCE, HDIAG, NICAS, SO, DIRAC e PLOTS.")
+    build_command = sub.add_parser(
+        "build",
+        help="Executa BFLOW, VBAL, UNBALANCE, HDIAG, NICAS, SO, DIRAC e PLOTS.",
+    )
     _add_common(build_command)
     _add_pair_source(build_command)
     build_command.add_argument("--from-stage", choices=STAGES, default="bflow")
@@ -116,13 +197,285 @@ def _request(args: argparse.Namespace, *, dry_run: bool = False) -> BuildRequest
     )
 
 
+def _config(args: argparse.Namespace):
+    config, _ = load_runtime_config(args.config)
+    return config
+
+
+def _setup_overrides(args: argparse.Namespace) -> dict[str, Path]:
+    pairs = {
+        "MONAN_JEDI_INSTALL": args.monan_jedi_install,
+        "MPAS_MESH_ROOT": args.mesh_root,
+        "MPAS_JEDI_STATIC_ROOT": args.static_root,
+        "MONAN_JEDI_SOURCE": args.monan_jedi_source,
+        "STACK_ROOT": args.stack_root,
+    }
+    return {name: value for name, value in pairs.items() if value is not None}
+
+
+def _setup(args: argparse.Namespace) -> int:
+    overrides = _setup_overrides(args)
+    setup_path, discovery = setup_environment(
+        site=args.site,
+        workspace=args.workspace,
+        resource=args.resource,
+        overrides=overrides,
+    )
+    workspace = discovery.as_environment()["WORK_ROOT"]
+    print("MPAS-BMatrix setup")
+    print("==================")
+    print(f"Site: {discovery.site}")
+    print(f"Resource: {discovery.resource}")
+    print(f"Workspace: {workspace}")
+    print(f"User setup: {setup_path}")
+    print(f"Site profile: {discovery.site_profile}")
+    print(f"Resource catalog: {discovery.resource_catalog}")
+    print()
+    print("Current pipeline layout:")
+    for child in (
+        "bmatrix/bflow_preprocessing",
+        "bmatrix/covariance",
+        "bmatrix/plots",
+    ):
+        print(f"  {Path(workspace) / child}")
+    if overrides:
+        print()
+        print("Explicit path overrides:")
+        for name, value in overrides.items():
+            print(f"  {name}: {value}")
+    unresolved = [item for item in discovery.values if not item.value]
+    if unresolved:
+        print()
+        print("Resources not resolved yet (only required if referenced by the selected config):")
+        for item in unresolved:
+            print(f"  [--] {item.name}: {item.description}")
+    warnings = resolution_warnings(discovery)
+    if warnings:
+        print()
+        print("Resolution notes:")
+        for warning in warnings:
+            print(f"  - {warning}")
+    print()
+    print("Run 'mpas-bmatrix paths' to inspect resolution and 'mpas-bmatrix doctor' to validate the selected config.")
+    return 0
+
+
+def _path_ok(label: str, path: Path) -> bool:
+    """Use an executable check for runtime programs and existence for data paths."""
+    executable = label.endswith(".x") or "executable" in label.lower()
+    if executable:
+        return path.is_file() and os.access(path, os.X_OK)
+    return path.exists()
+
+
+def _print_discovery(discovery) -> None:
+    print(f"Resource: {discovery.resource}")
+    print(f"Site profile: {discovery.site_profile}")
+    print(f"Resource catalog: {discovery.resource_catalog}")
+    for item in discovery.values:
+        value = item.value or "<unresolved>"
+        print(item.name)
+        print(f"  {value}")
+        print(f"  source: {item.source}")
+        print(f"  role: {item.description}")
+
+
+def _doctor(args: argparse.Namespace) -> int:
+    discovery = discover_runtime(site=args.site)
+    try:
+        config, discovery = load_runtime_config(args.config, site=discovery.site)
+    except _DOMAIN_ERRORS as exc:
+        payload = {
+            "site": discovery.site,
+            "resource": discovery.resource,
+            "ready": False,
+            "configuration_error": str(exc),
+            "discovery": discovery.as_dict(),
+        }
+        if args.json:
+            print(dump_json(payload))
+        else:
+            print("MPAS-BMatrix doctor")
+            print("==================")
+            print(f"Site: {discovery.site}")
+            print(f"Resource: {discovery.resource}")
+            print()
+            print("Path resolution:")
+            _print_discovery(discovery)
+            print()
+            print("[CONFIGURATION ERROR]")
+            print(f"  {exc}")
+            print()
+            print("The selected configuration cannot yet be fully resolved.")
+            print("Use 'mpas-bmatrix paths' to inspect the roots and configure only missing overrides.")
+        return 1
+
+    catalog, _ = load_resource_catalog(discovery.resource)
+    checks = doctor_checks(config, catalog)
+    result = [
+        {
+            "name": label,
+            "path": str(path),
+            "role": role,
+            "ok": _path_ok(label, path),
+        }
+        for label, path, role in checks
+    ]
+    contract = resource_contract_checks(config, catalog)
+    ready = all(item["ok"] for item in result) and all(item["ok"] for item in contract)
+    warnings = resolution_warnings(discovery)
+    if args.json:
+        print(
+            dump_json(
+                {
+                    "site": discovery.site,
+                    "resource": discovery.resource,
+                    "ready": ready,
+                    "contract_checks": contract,
+                    "filesystem_checks": result,
+                    "resolution_warnings": warnings,
+                    "discovery": discovery.as_dict(),
+                }
+            )
+        )
+        return 0 if ready else 1
+
+    print("MPAS-BMatrix doctor")
+    print("==================")
+    print(f"Site: {discovery.site}")
+    print(f"Resource: {discovery.resource}")
+    print(f"Mesh: {config['mesh']['name']}")
+    print(f"MPI ranks: {config['mesh'].get('nproc', 'not configured')}")
+    print(f"Site profile: {discovery.site_profile}")
+    print(f"Resource catalog: {discovery.resource_catalog}")
+    print()
+    print("Resource contract")
+    print("-----------------")
+    for item in contract:
+        marker = "OK" if item["ok"] else "MISMATCH"
+        print(f"[{marker}] {item['name']}: expected={item['expected']} actual={item['actual']}")
+    print()
+    print("Filesystem/runtime prerequisites")
+    print("--------------------------------")
+    for item in result:
+        marker = "OK" if item["ok"] else "MISSING"
+        print(f"[{marker}] {item['name']}")
+        print(f"       {item['path']}")
+        print(f"       {item['role']}")
+    if warnings:
+        print()
+        print("Resolution notes")
+        print("----------------")
+        for warning in warnings:
+            print(f"- {warning}")
+    print()
+    print("READY" if ready else "NOT READY")
+    return 0 if ready else 1
+
+
+def _paths(args: argparse.Namespace) -> int:
+    discovery = discover_runtime(site=args.site)
+    try:
+        config, discovery = load_runtime_config(args.config, site=discovery.site)
+    except _DOMAIN_ERRORS as exc:
+        if args.json:
+            print(
+                dump_json(
+                    {
+                        "site": discovery.site,
+                        "resource": discovery.resource,
+                        "complete": False,
+                        "configuration_error": str(exc),
+                        "discovery": discovery.as_dict(),
+                    }
+                )
+            )
+        else:
+            print("MPAS-BMatrix path resolution")
+            print("===========================")
+            print(f"Site: {discovery.site}")
+            print()
+            _print_discovery(discovery)
+            print()
+            print("Configuration-specific file paths cannot be fully expanded yet.")
+            print(f"  {exc}")
+        return 1
+
+    rows = config_path_rows(config)
+    warnings = resolution_warnings(discovery)
+    if args.json:
+        print(
+            dump_json(
+                {
+                    "site": discovery.site,
+                    "resource": discovery.resource,
+                    "complete": True,
+                    "resolution_warnings": warnings,
+                    "discovery": discovery.as_dict(),
+                    "resolved_paths": [
+                        {"name": name, "path": path, "role": role}
+                        for name, path, role in rows
+                    ],
+                }
+            )
+        )
+        return 0
+
+    print("MPAS-BMatrix resolved paths")
+    print("===========================")
+    print(f"Site: {discovery.site}")
+    print(f"Resource: {discovery.resource}")
+    print(f"Site profile: {discovery.site_profile}")
+    print(f"Resource catalog: {discovery.resource_catalog}")
+    print()
+    for name, path, role in rows:
+        print(name)
+        print(f"  {path}")
+        print(f"  {role}")
+    print()
+    print("Resolution sources")
+    print("------------------")
+    for item in discovery.values:
+        print(f"{item.name}: {item.value or '<unresolved>'}")
+        print(f"  source: {item.source}")
+    if warnings:
+        print()
+        print("Resolution notes")
+        print("----------------")
+        for warning in warnings:
+            print(f"- {warning}")
+    return 0
+
+
 def _check_config(args: argparse.Namespace) -> int:
-    print(json.dumps(load_config(args.config), indent=2, default=str, sort_keys=True))
+    config, discovery = load_runtime_config(args.config)
+    if args.json:
+        print(json.dumps(config, indent=2, default=str, sort_keys=True))
+        return 0
+
+    print("MPAS-BMatrix configuration")
+    print("==========================")
+    print(f"Site: {discovery.site}")
+    print(f"Resource: {discovery.resource}")
+    print(f"Project: {config.get('project', {}).get('name', 'MPAS-BMatrix')}")
+    print(f"Mesh: {config['mesh']['name']}")
+    print(f"MPI ranks: {config['mesh'].get('nproc', 'not configured')}")
+    print(f"Workspace: {config.get('project', {}).get('work_root', '<not configured>')}")
+    print()
+    print("Configuration sources:")
+    for source in config.get("configuration_sources", []):
+        print(f"  {source}")
+    for source in config.get("bmatrix_contract_sources", []):
+        print(f"  {source}")
+    print()
+    print("Configuration status: VALID")
+    print("Runtime readiness: NOT CHECKED by this command; run 'mpas-bmatrix doctor'.")
+    print("Use --json to inspect the complete resolved configuration.")
     return 0
 
 
 def _weights(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = _config(args)
     request = _request(args)
     resolved = plan(config, request)
     paths = generate_weights(config, resolved.paths.bflow, force=args.force)
@@ -131,14 +484,14 @@ def _weights(args: argparse.Namespace) -> int:
 
 
 def _build(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = _config(args)
     result = build(config, _request(args))
     print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
     return 0
 
 
 def _validate(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = _config(args)
     request = _request(args)
     resolved = plan(config, request)
     validate(config, args.stage, resolved.paths, variant=args.so_variant)
@@ -147,7 +500,7 @@ def _validate(args: argparse.Namespace) -> int:
 
 
 def _plots(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = _config(args)
     request = _request(args)
     resolved = plan(config, request)
     output = generate_plots(
@@ -163,9 +516,15 @@ def _plots(args: argparse.Namespace) -> int:
 
 
 def _products(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = _config(args)
     resolved = plan(config, _request(args))
-    print(json.dumps({key: str(value) for key, value in asdict(resolved.final_products).items()}, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            {key: str(value) for key, value in asdict(resolved.final_products).items()},
+            indent=2,
+            sort_keys=True,
+        )
+    )
     return 0
 
 
@@ -174,7 +533,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return int(args.handler(args))
-    except (BMatrixError, FileNotFoundError, ValueError, OSError, RuntimeError) as exc:
+    except _DOMAIN_ERRORS as exc:
         print(f"ERRO: {exc}", file=sys.stderr)
         return 2
 

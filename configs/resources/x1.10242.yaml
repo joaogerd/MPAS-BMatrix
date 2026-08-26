@@ -1,0 +1,50 @@
+# Logical resource catalog for the current MPAS-BMatrix x1.10242 contract.
+#
+# The catalog describes WHAT the selected resource contains. It deliberately
+# does not choose WHERE a user or site stores those files. Location resolution
+# belongs to the user setup/site profile layer.
+
+resource:
+  name: x1.10242
+  version: 1
+  nCells: 10242
+  nVertLevels: 55
+
+mesh:
+  grid: quasi_uniform/x1.10242_240km/mesh/x1.10242.grid.nc
+  graph: quasi_uniform/x1.10242_240km/graph/x1.10242.graph.info
+  partitions_dir: quasi_uniform/x1.10242_240km/partitions
+
+static:
+  invariant: x1.10242.invariant.nc
+  required_files:
+    - namelist.atmosphere_240km
+    - streams.atmosphere_240km
+    - stream_list.atmosphere.analysis
+    - stream_list.atmosphere.background
+    - stream_list.atmosphere.ensemble
+
+mpas_jedi_source:
+  geovars: mpas-jedi/test/testinput/namelists/geovars.yaml
+  keptvars: mpas-jedi/test/testinput/namelists/keptvars.yaml
+
+runtime:
+  required_executables:
+    mpasjedi_error_covariance_toolbox.x: toolbox SABER/BUMP
+    mpasjedi_variational.x: validação variacional SO
+    mpasjedi_unbalance_ensemble.x: aplicação de K2^-1
+
+  atmosphere_share: share/MPAS/core_atmosphere
+  required_atmosphere_files:
+    - CAM_ABS_DATA.DBL
+    - CAM_AEROPT_DATA.DBL
+    - GENPARM.TBL
+    - LANDUSE.TBL
+    - OZONE_DAT.TBL
+    - RRTMG_LW_DATA
+    - RRTMG_LW_DATA.DBL
+    - RRTMG_SW_DATA
+    - RRTMG_SW_DATA.DBL
+    - SOILPARM.TBL
+    - VEGPARM.TBL
+    - VERSION

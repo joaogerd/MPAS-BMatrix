@@ -3,80 +3,80 @@
 This page gives the shortest supported command sequence for the global
 `x1.10242` case on JACI.
 
-For explanations, read [`configuration.md`](configuration.md) and
-[`user-guide.md`](user-guide.md).
+For explanations, read [`getting-started.md`](getting-started.md),
+[`configuration.md`](configuration.md) and [`user-guide.md`](user-guide.md).
 
-## 1. Clone the repositories
+## 1. Clone and install
 
 ```bash
-export PROJECT_ROOT=/path/to/projects
-export WORK_ROOT=/path/to/work/MPAS-BMatrix
-
-mkdir -p "$PROJECT_ROOT" "$WORK_ROOT"
-cd "$PROJECT_ROOT"
-
 git clone https://github.com/joaogerd/MPAS-BMatrix.git
-git clone https://github.com/joaogerd/mpaswf.git
-
-export BMATRIX_ROOT="$PROJECT_ROOT/MPAS-BMatrix"
-export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
+cd MPAS-BMatrix
+python -m pip install -e .
 ```
 
-## 2. Export the JACI/x1.10242 paths
+If you also need to generate the upstream MPAS forecast pairs, install `mpaswf`
+separately following its own documentation.
+
+## 2. Configure the user workspace
 
 ```bash
-export MONAN_JEDI_SOURCE=/path/to/projects/MONAN-JEDI
-export MONAN_JEDI_INSTALL=/path/to/install/monan-jedi-mpas
-export MONAN_JEDI_UNBALANCE_EXE=/path/to/mpasjedi_unbalance_ensemble.x
-
-export MPAS_MESH_ROOT=/path/to/mpas_meshes
-export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
-
-export STACK_ROOT=/path/to/spack-stack
+mpas-bmatrix setup --site jaci
 ```
 
-## 3. Load the environment and install
+Default:
 
-```bash
-cd "$BMATRIX_ROOT"
-source scripts/load_jaci_env.sh
-
-python -m pip install --no-deps -e "$MPASWF_ROOT"
-python -m pip install -e "$BMATRIX_ROOT"
+```text
+/p/projetos/monan_das/<USER>/work/MPAS-BMatrix
 ```
 
-Optional plotting/testing extras:
+Optional override:
 
 ```bash
-python -m pip install -e "$BMATRIX_ROOT[diagnostics,dev]"
+mpas-bmatrix setup --site jaci --workspace /path/to/work/MPAS-BMatrix
+```
+
+## 3. Validate the environment and resources
+
+```bash
+mpas-bmatrix doctor
+```
+
+Do not continue until the command ends with:
+
+```text
+READY
+```
+
+See every resolved path and its role with:
+
+```bash
+mpas-bmatrix paths
 ```
 
 ## 4. Validate the composed configuration
 
 ```bash
-cd "$BMATRIX_ROOT"
-export CONFIG=configs/jaci-x1.10242.yaml
-
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix check-config \
-  --config "$CONFIG"
+mpas-bmatrix check-config --config configs/jaci-x1.10242.yaml
 ```
 
-Do not continue if any required value remains as `${VARIABLE}` or resolves to the
-wrong mesh, installation, static directory, queue or work root.
+For the complete JSON mapping:
+
+```bash
+mpas-bmatrix check-config --config configs/jaci-x1.10242.yaml --json
+```
 
 ## 5. Run from a `mpaswf` manifest
 
 ```bash
-export MANIFEST=/path/to/mpaswf-work/products/mpas-forecast-manifest.tsv
-
+MANIFEST=/path/to/mpaswf-work/products/mpas-forecast-manifest.tsv
 test -s "$MANIFEST"
 ```
 
 Dry-run:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
+mpas-bmatrix build \
+  --config configs/jaci-x1.10242.yaml \
   --manifest "$MANIFEST" \
   --from-stage bflow \
   --to-stage plots \
@@ -86,8 +86,8 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
 Full run:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
+mpas-bmatrix build \
+  --config configs/jaci-x1.10242.yaml \
   --manifest "$MANIFEST" \
   --from-stage bflow \
   --to-stage plots \
@@ -99,11 +99,14 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
 
 ## 6. Resume from an existing BFLOW workspace
 
-```bash
-export BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
+Use `mpas-bmatrix paths` and the deterministic workspace naming to locate the
+existing run, then:
 
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
+```bash
+BFLOW=/path/to/bflow/workspace
+
+mpas-bmatrix build \
+  --config configs/jaci-x1.10242.yaml \
   --bflow-workspace "$BFLOW" \
   --from-stage vbal \
   --to-stage plots \
@@ -116,8 +119,8 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
 ## 7. Run one stage
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
+mpas-bmatrix build \
+  --config configs/jaci-x1.10242.yaml \
   --bflow-workspace "$BFLOW" \
   --from-stage dirac \
   --to-stage dirac \
@@ -135,8 +138,8 @@ bflow, vbal, unbalance, hdiag, nicas, so, dirac, plots
 
 ```bash
 for stage in bflow vbal unbalance hdiag nicas so dirac plots; do
-  PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
-    --config "$CONFIG" \
+  mpas-bmatrix validate \
+    --config configs/jaci-x1.10242.yaml \
     --bflow-workspace "$BFLOW" \
     --stage "$stage" || break
 done
@@ -145,22 +148,13 @@ done
 List reusable final products:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix products \
-  --config "$CONFIG" \
+mpas-bmatrix products \
+  --config configs/jaci-x1.10242.yaml \
   --bflow-workspace "$BFLOW"
 ```
 
-## 9. Development checks
+## 9. Advanced overrides
 
-```bash
-cd "$BMATRIX_ROOT"
-mkdir -p .pytest-tmp
-
-TMPDIR="$BMATRIX_ROOT/.pytest-tmp" \
-PYTHONPATH="src:${PYTHONPATH:-}" \
-python -m pytest -p no:cacheprovider -q
-
-python -m ruff check src/bmatrix tests
-
-git diff --check
-```
+Normal users should not begin by exporting all installation paths. If automatic
+discovery is not appropriate for a non-standard installation, explicit overrides
+remain available and are documented in [`configuration.md`](configuration.md).

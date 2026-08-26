@@ -1,0 +1,40 @@
+# MPAS-BMatrix site profile for JACI.
+#
+# This file describes how the application may resolve infrastructure on JACI.
+# It intentionally does NOT claim that a canonical shared MONAN-JEDI/resource
+# installation already exists. Paths below the user's project area are marked as
+# compatibility fallbacks and remain visible as such in `mpas-bmatrix paths`.
+
+site: jaci
+
+workspace:
+  default: /p/projetos/monan_das/${USER}/work/MPAS-BMatrix
+
+resources:
+  default: x1.10242
+
+runtime:
+  monan_jedi_install:
+    command_probe: mpasjedi_error_covariance_toolbox.x
+    compatibility_candidates:
+      - /p/projetos/monan_das/${USER}/builds/monan-jedi
+      - /p/projetos/monan_das/${USER}/builds/monan-jedi-mpas
+
+  monan_jedi_source:
+    compatibility_candidates:
+      - /p/projetos/monan_das/${USER}/projects/MONAN-JEDI
+
+  mesh_root:
+    compatibility_candidates:
+      - /p/projetos/monan_das/${USER}/projects/mpas_meshes
+
+  static_root:
+    compatibility_candidates:
+      - /p/projetos/monan_das/${USER}/external-inputs/MPAS-BMatrix/x1.10242/static-files
+      - /p/projetos/monan_das/${USER}/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files
+
+  stack_root:
+    compatibility_globs:
+      - /p/projetos/monan_das/${USER}/work/spack-stack-inpe-overlay-*/spack-stack
+    compatibility_candidates:
+      - /p/projetos/monan_das/${USER}/work/spack-stack

@@ -142,7 +142,6 @@ def test_repository_default_config_composes_all_scientific_stages(
         "BMATRIX_ROOT": str(root),
         "WORK_ROOT": str(tmp_path / "work"),
         "MONAN_JEDI_INSTALL": str(tmp_path / "install"),
-        "MONAN_JEDI_UNBALANCE_EXE": str(tmp_path / "unbalance.x"),
         "MPAS_MESH_ROOT": str(tmp_path / "meshes"),
         "MPAS_JEDI_STATIC_ROOT": str(tmp_path / "static"),
         "MONAN_JEDI_SOURCE": str(tmp_path / "MONAN-JEDI"),
@@ -168,7 +167,9 @@ def test_repository_default_config_composes_all_scientific_stages(
     ):
         assert section in config
     assert "wps" not in config
-    assert config["install"]["unbalance_executable"] == variables["MONAN_JEDI_UNBALANCE_EXE"]
+    assert config["install"]["unbalance_executable"] == str(
+        Path(variables["MONAN_JEDI_INSTALL"]) / "bin" / "mpasjedi_unbalance_ensemble.x"
+    )
     assert config["environment"]["variables"]["STACK_ROOT"] == variables["STACK_ROOT"]
 
 

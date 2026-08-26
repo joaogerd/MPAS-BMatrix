@@ -13,33 +13,25 @@
 #   2. this file                         x1.10242 mesh and static inputs;
 #   3. configs/bmatrix-x1.10242.yaml     scientific B-matrix contract.
 #
-# How to modify it
-# ----------------
-# - Change mesh/static paths, MPI size or mesh-dependent runtime values here.
-# - Change JACI queues, installation roots or the environment loader in
-#   configs/jaci.yaml.
-# - Change scientific calibration parameters in the stage files included by
-#   configs/bmatrix-x1.10242.yaml.
-# - Do not add WPS, GFS or MPAS forecast-generation settings here; mpaswf owns
-#   those upstream tasks and provides the forecast-pair manifest consumed by
-#   BFLOW.
+# User-facing behavior
+# --------------------
+# Normal JACI users should not edit this file or export all roots manually.
+# `mpas-bmatrix setup --site jaci` stores only the user's site/workspace choice,
+# while the CLI discovers the remaining roots using the JACI profile and reports
+# exactly what was selected through `mpas-bmatrix paths` and `doctor`.
 #
-# Required shell variables
-# ------------------------
-# Variables required by the included JACI base:
-#   BMATRIX_ROOT, WORK_ROOT, MONAN_JEDI_INSTALL,
-#   MONAN_JEDI_UNBALANCE_EXE
+# Explicit environment variables remain supported as advanced overrides:
+#   MPAS_MESH_ROOT, MPAS_JEDI_STATIC_ROOT, MONAN_JEDI_SOURCE
+# plus the site/runtime values documented in configs/jaci.yaml.
 #
-# Variables used by this x1.10242 case:
-#   MPAS_MESH_ROOT        Root containing quasi_uniform/x1.10242_240km.
-#   MPAS_JEDI_STATIC_ROOT Directory containing the validated tutorial namelist,
-#                         streams, stream lists and x1.10242.invariant.nc.
-#   MONAN_JEDI_SOURCE     MONAN-JEDI source checkout containing geovars.yaml and
-#                         keptvars.yaml.
+# MONAN_JEDI_SOURCE is a transitional runtime dependency used only to reach the
+# current geovars.yaml and keptvars.yaml under mpas-jedi/test/testinput. It is
+# expected to disappear when those files move into a validated resource bundle.
+#
+# Do not add WPS, GFS or MPAS forecast-generation settings here; mpaswf owns
+# those upstream tasks and provides the forecast-pair manifest consumed by BFLOW.
 # =============================================================================
 
-# Merge the JACI site/runtime base before applying the case settings below.
-# Relative include paths are resolved from the directory containing this file.
 include: jaci.yaml
 
 mesh:
@@ -60,8 +52,7 @@ mesh:
   # names. A matching graph partition must exist for this value.
   nproc: 128
 
-  # Number of full model vertical levels. NICAS uses it to convert the configured
-  # level-from-top diagnostic location into a one-based model level.
+  # Number of full model vertical levels.
   nvertlevels: 55
 
 static:
@@ -69,23 +60,19 @@ static:
   invariant: ${MPAS_JEDI_STATIC_ROOT}/x1.10242.invariant.nc
 
   # Directory containing the validated namelist.atmosphere_240km,
-  # streams.atmosphere_240km and stream_list.atmosphere.* files. These files must
-  # remain compatible with the installed MPAS Registry and physics tables.
+  # streams.atmosphere_240km and stream_list.atmosphere.* files.
   tutorial_physics_files: ${MPAS_JEDI_STATIC_ROOT}
 
-  # MPAS-JEDI GeoVaLs variable-definition YAML linked into stage workspaces.
+  # Transitional source-tree dependencies; planned for the x1.10242 resource
+  # bundle so a normal runtime no longer depends on a MONAN-JEDI checkout.
   geovars: ${MONAN_JEDI_SOURCE}/mpas-jedi/test/testinput/namelists/geovars.yaml
-
-  # MPAS-JEDI kept-variable YAML linked into stage workspaces.
   keptvars: ${MONAN_JEDI_SOURCE}/mpas-jedi/test/testinput/namelists/keptvars.yaml
 
 bmatrix:
-  # Scientific-contract aggregator, resolved relative to this file. It includes
-  # one documented fragment per pipeline stage.
+  # Scientific-contract aggregator, resolved relative to this file.
   configuration: bmatrix-x1.10242.yaml
 
 runtime:
   # MPAS time step in seconds used only when BFLOW discovers forecast files from
   # --start-valid-time/--end-valid-time instead of reading an explicit manifest.
-  # It must match the upstream mpaswf forecast directory naming convention.
   config_dt: 60

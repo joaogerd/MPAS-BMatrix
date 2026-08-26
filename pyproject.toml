@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mpas-bmatrix-global"
+name = "mpas-bmatrix"
 version = "0.2.0"
 description = "Single-command workflow for MPAS-JEDI/SABER static B-matrix products"
 readme = "README.md"
