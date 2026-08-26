@@ -305,6 +305,7 @@ def config_path_rows(config: Mapping[str, object]) -> list[tuple[str, str, str]]
     add("Repository", project, "project_root", "código e templates do MPAS-BMatrix")
     add("Workspace", project, "work_root", "raiz dos workspaces gerados")
     add("MONAN-JEDI install", install, "root", "executáveis e arquivos share/ do runtime")
+    add("MPAS atmosphere share", install, "atmosphere_share", "tabelas físicas do MPAS")
     add("UNBALANCE executable", install, "unbalance_executable", "aplicação de K2^-1")
     add("MPAS grid", mesh, "grid", "geometria horizontal da malha")
     add("MPAS graph", mesh, "graph", "grafo usado no particionamento MPI")
@@ -321,6 +322,7 @@ def doctor_checks(config: Mapping[str, object]) -> list[tuple[str, Path, str]]:
     """Build concrete filesystem checks for the resolved configuration."""
     rows = config_path_rows(config)
     checks = [(label, Path(value).expanduser(), role) for label, value, role in rows]
+
     mesh = config.get("mesh", {})
     if isinstance(mesh, Mapping) and mesh.get("graph") and mesh.get("nproc"):
         graph = Path(str(mesh["graph"])).expanduser()
@@ -333,6 +335,7 @@ def doctor_checks(config: Mapping[str, object]) -> list[tuple[str, Path, str]]:
                 "partição da malha compatível com os ranks configurados",
             )
         )
+
     install = config.get("install", {})
     if isinstance(install, Mapping) and install.get("root"):
         root = Path(str(install["root"])).expanduser()
@@ -341,6 +344,36 @@ def doctor_checks(config: Mapping[str, object]) -> list[tuple[str, Path, str]]:
             ("mpasjedi_variational.x", "validação variacional SO"),
         ):
             checks.append((executable, root / "bin" / executable, role))
+
+    static = config.get("static", {})
+    if isinstance(static, Mapping) and static.get("tutorial_physics_files"):
+        static_root = Path(str(static["tutorial_physics_files"])).expanduser()
+        for filename, role in (
+            ("namelist.atmosphere_240km", "configuração MPAS compatível com x1.10242"),
+            ("streams.atmosphere_240km", "streams de entrada/saída do MPAS"),
+            ("stream_list.atmosphere.analysis", "variáveis do espaço de análise"),
+            ("stream_list.atmosphere.background", "variáveis do background"),
+            ("stream_list.atmosphere.ensemble", "variáveis das amostras/ensemble"),
+        ):
+            checks.append((filename, static_root / filename, role))
+
+    if isinstance(install, Mapping) and install.get("atmosphere_share"):
+        physics_root = Path(str(install["atmosphere_share"])).expanduser()
+        for filename in (
+            "CAM_ABS_DATA.DBL",
+            "CAM_AEROPT_DATA.DBL",
+            "GENPARM.TBL",
+            "LANDUSE.TBL",
+            "OZONE_DAT.TBL",
+            "RRTMG_LW_DATA",
+            "RRTMG_LW_DATA.DBL",
+            "RRTMG_SW_DATA",
+            "RRTMG_SW_DATA.DBL",
+            "SOILPARM.TBL",
+            "VEGPARM.TBL",
+            "VERSION",
+        ):
+            checks.append((filename, physics_root / filename, "tabela/arquivo físico requerido pelo MPAS"))
     return checks
 
 
