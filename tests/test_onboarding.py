@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import yaml
 
-from bmatrix.cli import build_parser
+from bmatrix.cli import build_parser, main
 from bmatrix.onboarding import discover_runtime, doctor_checks, save_setup
 
 
@@ -46,6 +46,26 @@ def test_workspace_argument_wins_during_setup_discovery(monkeypatch, tmp_path):
 
     assert resolved["WORK_ROOT"].value == str(requested_workspace)
     assert resolved["WORK_ROOT"].source == "argument"
+
+
+def test_paths_reports_partial_discovery_without_loading_config(monkeypatch, capsys, tmp_path):
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path / "work"))
+    for name in (
+        "MONAN_JEDI_INSTALL",
+        "MPAS_MESH_ROOT",
+        "MPAS_JEDI_STATIC_ROOT",
+        "MONAN_JEDI_SOURCE",
+        "STACK_ROOT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    status = main(["paths", "--site", "generic"])
+    output = capsys.readouterr().out
+
+    assert status == 1
+    assert "MPAS-BMatrix path discovery" in output
+    assert "<unresolved>" in output
+    assert "Configuration-specific file paths cannot be fully expanded yet." in output
 
 
 def test_save_setup_persists_only_site_and_workspace(tmp_path):
