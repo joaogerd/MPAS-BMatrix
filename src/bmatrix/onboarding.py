@@ -162,7 +162,12 @@ def discover_runtime(
     install = _prefix_from_command("mpasjedi_error_covariance_toolbox.x")
     source = mesh = static = stack = None
     if active_site == "jaci":
-        install = install or _first_existing((jaci_root / "builds" / "monan-jedi-mpas",))
+        install = install or _first_existing(
+            (
+                jaci_root / "builds" / "monan-jedi",
+                jaci_root / "builds" / "monan-jedi-mpas",
+            )
+        )
         source = _first_existing((jaci_root / "projects" / "MONAN-JEDI",))
         mesh = _first_existing((jaci_root / "projects" / "mpas_meshes",))
         static = _first_existing(
