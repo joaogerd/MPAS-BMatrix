@@ -11,7 +11,6 @@ from pathlib import Path
 from .errors import BMatrixError
 from .onboarding import (
     SUPPORTED_SITES,
-    apply_runtime,
     config_path_rows,
     discover_runtime,
     doctor_checks,
@@ -24,6 +23,7 @@ from .pipeline import BuildRequest, STAGES, build, generate_weights, plan, valid
 from .plots_core.runner import generate_plots
 
 DEFAULT_CONFIG = str(repository_root() / "configs" / "jaci-x1.10242.yaml")
+_DOMAIN_ERRORS = (BMatrixError, FileNotFoundError, ValueError, OSError, RuntimeError)
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
@@ -192,14 +192,11 @@ def _setup(args: argparse.Namespace) -> int:
     print()
     unresolved = [item for item in discovery.values if not item.value]
     if unresolved:
-        print("Resources still not discovered:")
+        print("Resources not discovered yet (only required if referenced by the selected config):")
         for item in unresolved:
             print(f"  [--] {item.name}: {item.description}")
         print()
-        print("Run 'mpas-bmatrix doctor' for the complete diagnosis.")
-    else:
-        print("All current runtime roots were discovered.")
-        print("Run 'mpas-bmatrix doctor' to validate their contents.")
+    print("Run 'mpas-bmatrix paths' to inspect resolution and 'mpas-bmatrix doctor' to validate the selected config.")
     return 0
 
 
@@ -211,14 +208,24 @@ def _path_ok(label: str, path: Path) -> bool:
     return path.exists()
 
 
+def _print_discovery(discovery) -> None:
+    for item in discovery.values:
+        value = item.value or "<unresolved>"
+        print(item.name)
+        print(f"  {value}")
+        print(f"  source: {item.source}")
+        print(f"  role: {item.description}")
+
+
 def _doctor(args: argparse.Namespace) -> int:
     discovery = discover_runtime(site=args.site)
-    unresolved = [item for item in discovery.values if not item.value]
-    if unresolved:
+    try:
+        config, discovery = load_runtime_config(args.config, site=discovery.site)
+    except _DOMAIN_ERRORS as exc:
         payload = {
             "site": discovery.site,
             "ready": False,
-            "unresolved": [item.name for item in unresolved],
+            "configuration_error": str(exc),
             "discovery": discovery.as_dict(),
         }
         if args.json:
@@ -228,24 +235,16 @@ def _doctor(args: argparse.Namespace) -> int:
             print("==================")
             print(f"Site: {discovery.site}")
             print()
-            print("Resolved/discovered roots:")
-            for item in discovery.values:
-                value = item.value or "<unresolved>"
-                marker = "OK" if item.value else "MISSING"
-                print(f"  [{marker}] {item.name}: {value}")
-                print(f"       source: {item.source}")
+            print("Path discovery:")
+            _print_discovery(discovery)
             print()
-            print("Unresolved resources:")
-            for item in unresolved:
-                print(f"  [MISSING] {item.name}")
-                print(f"            {item.description}")
+            print("[CONFIGURATION ERROR]")
+            print(f"  {exc}")
             print()
-            print("Explicit environment variables remain supported as overrides.")
-            print("Use 'mpas-bmatrix paths' to inspect discovery even before setup is complete.")
+            print("The selected configuration cannot yet be fully resolved.")
+            print("Use 'mpas-bmatrix paths' to inspect the roots and apply an override only when needed.")
         return 1
 
-    apply_runtime(discovery)
-    config, _ = load_runtime_config(args.config, site=discovery.site)
     checks = doctor_checks(config)
     result = [
         {
@@ -288,17 +287,17 @@ def _doctor(args: argparse.Namespace) -> int:
 
 def _paths(args: argparse.Namespace) -> int:
     discovery = discover_runtime(site=args.site)
-    unresolved = [item for item in discovery.values if not item.value]
-
-    if unresolved:
+    try:
+        config, discovery = load_runtime_config(args.config, site=discovery.site)
+    except _DOMAIN_ERRORS as exc:
         if args.json:
             print(
                 dump_json(
                     {
                         "site": discovery.site,
                         "complete": False,
+                        "configuration_error": str(exc),
                         "discovery": discovery.as_dict(),
-                        "unresolved": [item.name for item in unresolved],
                     }
                 )
             )
@@ -307,18 +306,12 @@ def _paths(args: argparse.Namespace) -> int:
             print("==========================")
             print(f"Site: {discovery.site}")
             print()
-            for item in discovery.values:
-                value = item.value or "<unresolved>"
-                print(item.name)
-                print(f"  {value}")
-                print(f"  source: {item.source}")
-                print(f"  role: {item.description}")
+            _print_discovery(discovery)
             print()
-            print("Configuration-specific file paths cannot be fully expanded yet.")
-            print("Resolve the items marked <unresolved>, then run this command again.")
+            print("Configuration-specific file paths cannot be fully expanded yet:")
+            print(f"  {exc}")
         return 1
 
-    config, discovery = load_runtime_config(args.config, site=discovery.site)
     rows = config_path_rows(config)
     if args.json:
         print(
@@ -348,7 +341,7 @@ def _paths(args: argparse.Namespace) -> int:
     print("Discovery sources")
     print("-----------------")
     for item in discovery.values:
-        print(f"{item.name}: {item.value}")
+        print(f"{item.name}: {item.value or '<unresolved>'}")
         print(f"  source: {item.source}")
     return 0
 
@@ -437,7 +430,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return int(args.handler(args))
-    except (BMatrixError, FileNotFoundError, ValueError, OSError, RuntimeError) as exc:
+    except _DOMAIN_ERRORS as exc:
         print(f"ERRO: {exc}", file=sys.stderr)
         return 2
 
