@@ -36,6 +36,7 @@ def test_site_profile_and_resource_catalog_are_logical_contracts():
 
 
 def test_discovery_keeps_explicit_environment_overrides(monkeypatch, tmp_path):
+    monkeypatch.setattr(onboarding, "USER_CONFIG", tmp_path / "setup.yaml")
     overrides = {
         "BMATRIX_ROOT": tmp_path / "repo",
         "WORK_ROOT": tmp_path / "work",
@@ -80,6 +81,7 @@ def test_saved_setup_override_supports_nonstandard_layout(monkeypatch, tmp_path)
 
 
 def test_workspace_argument_wins_during_setup_discovery(monkeypatch, tmp_path):
+    monkeypatch.setattr(onboarding, "USER_CONFIG", tmp_path / "setup.yaml")
     shell_workspace = tmp_path / "shell-work"
     requested_workspace = tmp_path / "requested-work"
     monkeypatch.setenv("WORK_ROOT", str(shell_workspace))
@@ -91,7 +93,11 @@ def test_workspace_argument_wins_during_setup_discovery(monkeypatch, tmp_path):
     assert resolved["WORK_ROOT"].source == "argument"
 
 
-def test_jaci_discovery_prefers_current_monan_jedi_install_name(monkeypatch):
+def test_jaci_discovery_prefers_current_monan_jedi_install_name(monkeypatch, tmp_path):
+    monkeypatch.setattr(onboarding, "USER_CONFIG", tmp_path / "setup.yaml")
+    for name in onboarding.RUNTIME_OVERRIDE_NAMES:
+        monkeypatch.delenv(name, raising=False)
+
     calls = []
     monkeypatch.setattr(onboarding, "_prefix_from_command", lambda _command: None)
     monkeypatch.setattr(onboarding, "_latest_glob", lambda _pattern: None)
@@ -111,14 +117,9 @@ def test_jaci_discovery_prefers_current_monan_jedi_install_name(monkeypatch):
 
 
 def test_paths_reports_partial_discovery_without_loading_config(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(onboarding, "USER_CONFIG", tmp_path / "setup.yaml")
     monkeypatch.setenv("WORK_ROOT", str(tmp_path / "work"))
-    for name in (
-        "MONAN_JEDI_INSTALL",
-        "MPAS_MESH_ROOT",
-        "MPAS_JEDI_STATIC_ROOT",
-        "MONAN_JEDI_SOURCE",
-        "STACK_ROOT",
-    ):
+    for name in onboarding.RUNTIME_OVERRIDE_NAMES:
         monkeypatch.delenv(name, raising=False)
 
     status = main(["paths", "--site", "generic"])
