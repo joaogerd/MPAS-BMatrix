@@ -4,7 +4,13 @@ import yaml
 
 import bmatrix.onboarding as onboarding
 from bmatrix.cli import build_parser, main
-from bmatrix.onboarding import discover_runtime, doctor_checks, save_setup
+from bmatrix.onboarding import (
+    discover_runtime,
+    doctor_checks,
+    load_resource_catalog,
+    load_site_profile,
+    save_setup,
+)
 
 
 def test_public_cli_exposes_onboarding_commands():
@@ -13,6 +19,20 @@ def test_public_cli_exposes_onboarding_commands():
         action for action in parser._actions if getattr(action, "choices", None)
     )
     assert {"setup", "doctor", "paths", "check-config"}.issubset(subparsers.choices)
+
+
+def test_site_profile_and_resource_catalog_are_logical_contracts():
+    profile, profile_path = load_site_profile("jaci")
+    catalog, catalog_path = load_resource_catalog("x1.10242")
+
+    assert profile_path.name == "jaci.yaml"
+    assert profile["resources"]["default"] == "x1.10242"
+    assert "compatibility_candidates" in profile["runtime"]["monan_jedi_install"]
+
+    assert catalog_path.name == "x1.10242.yaml"
+    assert catalog["resource"]["nCells"] == 10242
+    assert catalog["resource"]["nVertLevels"] == 55
+    assert catalog["mesh"]["grid"].endswith("x1.10242.grid.nc")
 
 
 def test_discovery_keeps_explicit_environment_overrides(monkeypatch, tmp_path):
@@ -35,6 +55,28 @@ def test_discovery_keeps_explicit_environment_overrides(monkeypatch, tmp_path):
     for name, path in overrides.items():
         assert resolved[name].value == str(path)
         assert resolved[name].source == "environment"
+
+
+def test_saved_setup_override_supports_nonstandard_layout(monkeypatch, tmp_path):
+    config_path = tmp_path / "setup.yaml"
+    workspace = tmp_path / "workspace"
+    install = tmp_path / "custom-monan-jedi"
+    workspace.mkdir()
+    install.mkdir()
+    monkeypatch.setattr(onboarding, "USER_CONFIG", config_path)
+    monkeypatch.delenv("MONAN_JEDI_INSTALL", raising=False)
+
+    save_setup(
+        site="generic",
+        workspace=workspace,
+        overrides={"MONAN_JEDI_INSTALL": install},
+        path=config_path,
+    )
+    discovery = discover_runtime(site="generic")
+    resolved = {item.name: item for item in discovery.values}
+
+    assert resolved["MONAN_JEDI_INSTALL"].value == str(install)
+    assert resolved["MONAN_JEDI_INSTALL"].source == "user-config"
 
 
 def test_workspace_argument_wins_during_setup_discovery(monkeypatch, tmp_path):
@@ -83,12 +125,12 @@ def test_paths_reports_partial_discovery_without_loading_config(monkeypatch, cap
     output = capsys.readouterr().out
 
     assert status == 1
-    assert "MPAS-BMatrix path discovery" in output
+    assert "MPAS-BMatrix path resolution" in output
     assert "<unresolved>" in output
     assert "Configuration-specific file paths cannot be fully expanded yet." in output
 
 
-def test_save_setup_persists_only_site_and_workspace(tmp_path):
+def test_save_setup_persists_semantic_choices_and_no_implicit_paths(tmp_path):
     config_path = tmp_path / "setup.yaml"
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -96,7 +138,11 @@ def test_save_setup_persists_only_site_and_workspace(tmp_path):
     saved = save_setup(site="jaci", workspace=workspace, path=config_path)
     payload = yaml.safe_load(saved.read_text(encoding="utf-8"))
 
-    assert payload == {"site": "jaci", "workspace": str(workspace.resolve())}
+    assert payload == {
+        "site": "jaci",
+        "workspace": str(workspace.resolve()),
+        "resource": "x1.10242",
+    }
 
 
 def test_doctor_checks_include_requested_mpi_partition(tmp_path):
