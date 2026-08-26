@@ -7,8 +7,17 @@ import json
 import sys
 from pathlib import Path
 
-from .config import load_config
 from .errors import BMatrixError
+from .onboarding import (
+    SUPPORTED_SITES,
+    apply_runtime,
+    config_path_rows,
+    discover_runtime,
+    doctor_checks,
+    dump_json,
+    load_runtime_config,
+    setup_environment,
+)
 from .pipeline import BuildRequest, STAGES, build, generate_weights, plan, validate
 from .plots_core.runner import generate_plots
 
@@ -48,8 +57,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    check = sub.add_parser("check-config", help="Valida e mostra a configuração resolvida.")
+    setup = sub.add_parser("setup", help="Configura o mínimo necessário para usar MPAS-BMatrix no site selecionado.")
+    setup.add_argument("--site", choices=SUPPORTED_SITES, default="jaci")
+    setup.add_argument("--workspace", type=Path, help="Raiz de trabalho; no JACI há um default por usuário.")
+    setup.set_defaults(handler=_setup)
+
+    doctor = sub.add_parser("doctor", help="Verifica ambiente, executáveis, malha e arquivos estáticos antes de rodar.")
+    doctor.add_argument("--config", default=DEFAULT_CONFIG)
+    doctor.add_argument("--site", choices=SUPPORTED_SITES)
+    doctor.add_argument("--json", action="store_true", help="Emite diagnóstico estruturado em JSON.")
+    doctor.set_defaults(handler=_doctor)
+
+    paths = sub.add_parser("paths", help="Mostra os caminhos resolvidos e explica o papel de cada recurso.")
+    paths.add_argument("--config", default=DEFAULT_CONFIG)
+    paths.add_argument("--site", choices=SUPPORTED_SITES)
+    paths.add_argument("--json", action="store_true", help="Emite os caminhos em JSON.")
+    paths.set_defaults(handler=_paths)
+
+    check = sub.add_parser("check-config", help="Valida e resume a configuração resolvida.")
     check.add_argument("--config", default=DEFAULT_CONFIG)
+    check.add_argument("--json", action="store_true", help="Mostra a configuração completa em JSON.")
     check.set_defaults(handler=_check_config)
 
     weights = sub.add_parser("weights", help="Gera apenas pesos ESMPy MPAS <-> lat-lon no workspace BFLOW.")
@@ -116,13 +143,158 @@ def _request(args: argparse.Namespace, *, dry_run: bool = False) -> BuildRequest
     )
 
 
+def _config(args: argparse.Namespace):
+    config, _ = load_runtime_config(args.config)
+    return config
+
+
+def _setup(args: argparse.Namespace) -> int:
+    setup_path, discovery = setup_environment(site=args.site, workspace=args.workspace)
+    workspace = discovery.as_environment()["WORK_ROOT"]
+    print("MPAS-BMatrix setup")
+    print("==================")
+    print(f"Site: {discovery.site}")
+    print(f"Workspace: {workspace}")
+    print(f"User setup: {setup_path}")
+    print()
+    print("Directories:")
+    for child in ("config", "data", "work", "output", "logs"):
+        print(f"  {Path(workspace) / child}")
+    print()
+    unresolved = [item for item in discovery.values if not item.value]
+    if unresolved:
+        print("Resources still not discovered:")
+        for item in unresolved:
+            print(f"  [--] {item.name}: {item.description}")
+        print()
+        print("Run 'mpas-bmatrix doctor' for the complete diagnosis.")
+    else:
+        print("All current runtime roots were discovered.")
+        print("Run 'mpas-bmatrix doctor' to validate their contents.")
+    return 0
+
+
+def _doctor(args: argparse.Namespace) -> int:
+    discovery = discover_runtime(site=args.site)
+    unresolved = [item for item in discovery.values if not item.value]
+    if unresolved:
+        payload = {
+            "site": discovery.site,
+            "ready": False,
+            "unresolved": [item.name for item in unresolved],
+            "discovery": discovery.as_dict(),
+        }
+        if args.json:
+            print(dump_json(payload))
+        else:
+            print("MPAS-BMatrix doctor")
+            print("==================")
+            print(f"Site: {discovery.site}")
+            print()
+            print("Unresolved resources:")
+            for item in unresolved:
+                print(f"  [MISSING] {item.name}")
+                print(f"            {item.description}")
+            print()
+            print("Explicit environment variables remain supported as overrides.")
+            print("Use 'mpas-bmatrix paths' after resolving these resources.")
+        return 1
+
+    apply_runtime(discovery)
+    config, _ = load_runtime_config(args.config, site=discovery.site)
+    checks = doctor_checks(config)
+    result = [
+        {
+            "name": label,
+            "path": str(path),
+            "role": role,
+            "ok": path.exists(),
+        }
+        for label, path, role in checks
+    ]
+    ready = all(item["ok"] for item in result)
+    if args.json:
+        print(dump_json({"site": discovery.site, "ready": ready, "checks": result, "discovery": discovery.as_dict()}))
+        return 0 if ready else 1
+
+    print("MPAS-BMatrix doctor")
+    print("==================")
+    print(f"Site: {discovery.site}")
+    print(f"Mesh: {config['mesh']['name']}")
+    print(f"MPI ranks: {config['mesh'].get('nproc', 'not configured')}")
+    print()
+    for item in result:
+        marker = "OK" if item["ok"] else "MISSING"
+        print(f"[{marker}] {item['name']}")
+        print(f"       {item['path']}")
+        print(f"       {item['role']}")
+    print()
+    print("READY" if ready else "NOT READY")
+    return 0 if ready else 1
+
+
+def _paths(args: argparse.Namespace) -> int:
+    config, discovery = load_runtime_config(args.config, site=args.site)
+    rows = config_path_rows(config)
+    if args.json:
+        print(
+            dump_json(
+                {
+                    "site": discovery.site,
+                    "discovery": discovery.as_dict(),
+                    "resolved_paths": [
+                        {"name": name, "path": path, "role": role} for name, path, role in rows
+                    ],
+                }
+            )
+        )
+        return 0
+
+    print("MPAS-BMatrix resolved paths")
+    print("===========================")
+    print(f"Site: {discovery.site}")
+    print()
+    for name, path, role in rows:
+        print(name)
+        print(f"  {path}")
+        print(f"  {role}")
+    print()
+    print("Discovery sources")
+    print("-----------------")
+    for item in discovery.values:
+        value = item.value or "<unresolved>"
+        print(f"{item.name}: {value}")
+        print(f"  source: {item.source}")
+    return 0
+
+
 def _check_config(args: argparse.Namespace) -> int:
-    print(json.dumps(load_config(args.config), indent=2, default=str, sort_keys=True))
+    config, discovery = load_runtime_config(args.config)
+    if args.json:
+        print(json.dumps(config, indent=2, default=str, sort_keys=True))
+        return 0
+
+    print("MPAS-BMatrix configuration")
+    print("==========================")
+    print(f"Site: {discovery.site}")
+    print(f"Project: {config.get('project', {}).get('name', 'MPAS-BMatrix')}")
+    print(f"Mesh: {config['mesh']['name']}")
+    print(f"MPI ranks: {config['mesh'].get('nproc', 'not configured')}")
+    print(f"Workspace: {config.get('project', {}).get('work_root', '<not configured>')}")
+    print()
+    print("Configuration sources:")
+    for source in config.get("configuration_sources", []):
+        print(f"  {source}")
+    for source in config.get("bmatrix_contract_sources", []):
+        print(f"  {source}")
+    print()
+    print("Status: VALID")
+    print("Use --json to inspect the complete resolved configuration.")
     return 0
 
 
 def _weights(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = _config(args)
     request = _request(args)
     resolved = plan(config, request)
     paths = generate_weights(config, resolved.paths.bflow, force=args.force)
@@ -131,14 +303,14 @@ def _weights(args: argparse.Namespace) -> int:
 
 
 def _build(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = _config(args)
     result = build(config, _request(args))
     print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
     return 0
 
 
 def _validate(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = _config(args)
     request = _request(args)
     resolved = plan(config, request)
     validate(config, args.stage, resolved.paths, variant=args.so_variant)
@@ -147,7 +319,7 @@ def _validate(args: argparse.Namespace) -> int:
 
 
 def _plots(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = _config(args)
     request = _request(args)
     resolved = plan(config, request)
     output = generate_plots(
@@ -163,7 +335,7 @@ def _plots(args: argparse.Namespace) -> int:
 
 
 def _products(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = _config(args)
     resolved = plan(config, _request(args))
     print(json.dumps({key: str(value) for key, value in asdict(resolved.final_products).items()}, indent=2, sort_keys=True))
     return 0
