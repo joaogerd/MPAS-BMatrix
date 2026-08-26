@@ -37,7 +37,8 @@ still be overridden explicitly for non-standard installations.
 
 | Document | Purpose |
 | --- | --- |
-| [`getting-started.md`](getting-started.md) | First run on JACI: setup, resource meanings, path discovery and validation. |
+| [`getting-started.md`](getting-started.md) | First run on JACI: setup, resource meanings, path resolution and validation. |
+| [`resolution-model.md`](resolution-model.md) | Explains user setup, site profiles, resource catalogs, precedence and compatibility fallbacks. |
 | [`jaci-quickstart.md`](jaci-quickstart.md) | Short command sequence for an already familiar JACI user. |
 | [`user-guide.md`](user-guide.md) | Main execution guide and stage-by-stage operator workflow. |
 | [`configuration.md`](configuration.md) | Underlying configuration hierarchy, path meanings, discovery, overrides and rebuild boundaries. |
@@ -99,17 +100,25 @@ documentation uses the installed command.
 
 ## Current validated case
 
-The global `x1.10242` case is internally composed from:
+The global `x1.10242` case now has two resolution contracts before the existing
+scientific configuration hierarchy:
 
 ```text
+configs/sites/jaci.yaml
+configs/resources/x1.10242.yaml
+        ↓
 configs/jaci.yaml
 configs/jaci-x1.10242.yaml
 configs/bmatrix-x1.10242.yaml
 configs/bmatrix/x1.10242/*.yaml
 ```
 
-Normal users do not need to understand this hierarchy before the first `doctor`
-run. The hierarchy remains visible for scientific review and reproducibility.
+The site profile describes machine/path resolution policy. The resource catalog
+describes the logical x1.10242 resource. The lower YAML hierarchy remains the
+scientific/runtime configuration consumed by the pipeline.
+
+Normal users do not need to understand all layers before the first `doctor` run.
+All layers remain visible for review and reproducibility.
 
 The current deterministic work layout is:
 
