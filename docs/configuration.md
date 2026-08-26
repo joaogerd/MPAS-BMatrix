@@ -1,31 +1,42 @@
 # Configuration guide
 
-MPAS-BMatrix uses a composed YAML hierarchy so machine settings, mesh/case
-settings and stage-specific scientific parameters can be reviewed independently.
+MPAS-BMatrix separates user choices, machine/site resolution, logical resources
+and the scientific workflow configuration. This avoids making personal absolute
+paths part of the scientific contract.
 
-For a normal user, however, **the YAML hierarchy is not the first interface**.
-Start with:
+For a normal user, the YAML hierarchy is not the first interface. Start with:
 
 ```bash
 mpas-bmatrix setup --site jaci
-mpas-bmatrix doctor
 mpas-bmatrix paths
+mpas-bmatrix doctor
+mpas-bmatrix check-config
 ```
 
-The CLI resolves the standard JACI resources, validates their contents and shows
-where every path came from. This document explains the underlying configuration
-contract and the advanced override mechanism.
+See [`resolution-model.md`](resolution-model.md) for the detailed resolution
+model.
 
-## 1. Configuration layers
+## 1. Configuration and resolution layers
 
-The default x1.10242 case is composed internally from:
+The current x1.10242 flow is:
 
 ```text
+~/.config/mpas-bmatrix/setup.yaml
+  semantic user choices + optional explicit private overrides
+
+configs/sites/jaci.yaml
+  site policy and physical-path resolution rules
+
+configs/resources/x1.10242.yaml
+  logical x1.10242 resource contract
+
+        ↓ resolved roots are injected before YAML composition
+
 configs/jaci.yaml
-  JACI site/build/runtime base
+  JACI runtime/PBS base
 
 configs/jaci-x1.10242.yaml
-  runnable x1.10242 mesh/static case
+  runnable mesh/static case
 
 configs/bmatrix-x1.10242.yaml
   scientific-contract aggregator
@@ -34,41 +45,163 @@ configs/bmatrix/x1.10242/*.yaml
   controls plus one scientific fragment per BFLOW-through-DIRAC stage
 ```
 
-Normal users do not need to edit these files for the standard JACI case.
+The site profile answers **where infrastructure can be resolved**. The resource
+catalog answers **what the selected resource must contain**. The lower YAML
+hierarchy remains the runtime/scientific configuration consumed by the pipeline.
 
-The default operator command is:
+## 2. Standard user setup
 
-```bash
-mpas-bmatrix check-config
-```
-
-It prints a short summary. Use:
+On JACI:
 
 ```bash
-mpas-bmatrix check-config --json
+mpas-bmatrix setup --site jaci
 ```
 
-only when the complete composed mapping is needed for debugging or audit.
+The standard saved setup is intentionally small:
 
-## 2. The resources behind the paths
+```yaml
+site: jaci
+workspace: /p/projetos/monan_das/<USER>/work/MPAS-BMatrix
+resource: x1.10242
+```
 
-The paths in the configuration represent different kinds of resources. They are
-not interchangeable and users should not create empty directories merely to
-satisfy a variable.
+A user with a different work area can set only the workspace:
+
+```bash
+mpas-bmatrix setup --site jaci --workspace /path/to/work
+```
+
+A user with a private/non-standard runtime provides only the roots that differ,
+for example:
+
+```bash
+mpas-bmatrix setup --site jaci \
+  --monan-jedi-install /custom/monan-jedi \
+  --mesh-root /custom/mpas_meshes
+```
+
+These explicit choices are persisted under `overrides:` rather than being added
+as new user-specific heuristics to the site profile.
+
+## 3. Resolution precedence
+
+Runtime roots use this precedence:
+
+```text
+explicit environment override
+        ↓
+saved user override
+        ↓
+canonical path declared by the site profile, when one exists
+        ↓
+command probe from the active environment
+        ↓
+compatibility fallback declared by the site profile
+        ↓
+unresolved
+```
+
+Workspace resolution uses:
+
+```text
+explicit setup/workspace argument
+        ↓
+WORK_ROOT environment override
+        ↓
+saved user workspace
+        ↓
+site-profile workspace default
+```
+
+The resolver never recursively scans arbitrary user project trees.
+
+`mpas-bmatrix paths` reports the source of every resolved root. Current source
+labels are:
+
+```text
+package
+argument
+environment
+user-config
+site-profile
+command-probe
+compatibility-fallback
+unresolved
+```
+
+`compatibility-fallback` is important: it means the path works for the current
+deployment but is **not** being claimed as the canonical shared site contract.
+
+## 4. Site profiles
+
+Site profiles live under:
+
+```text
+configs/sites/
+```
+
+Current profiles are:
+
+```text
+configs/sites/jaci.yaml
+configs/sites/generic.yaml
+```
+
+The JACI profile defines:
+
+- default workspace;
+- default logical resource;
+- optional command probes;
+- optional canonical site paths when they exist;
+- transitional compatibility candidates/globs.
+
+The generic profile intentionally assumes no machine-specific runtime roots.
+Users on an unknown machine must provide unresolved resources explicitly rather
+than letting the application guess.
+
+## 5. Resource catalogs
+
+Logical resource catalogs live under:
+
+```text
+configs/resources/
+```
+
+The current case uses:
+
+```text
+configs/resources/x1.10242.yaml
+```
+
+The catalog records the logical contract for x1.10242, including:
+
+```text
+resource name
+nCells metadata
+nVertLevels
+mesh grid/graph/partition layout
+required static files
+transitional geovars/keptvars locations
+required MPAS-JEDI executables
+MPAS core_atmosphere runtime files
+```
+
+It deliberately does not contain João's, Maria's or another user's absolute
+filesystem roots.
+
+## 6. The resources behind the resolved paths
 
 ### MPAS-BMatrix repository
 
-Resolved configuration key:
+Resolved key:
 
 ```text
 project.project_root
 ```
 
-Meaning: the checked-out/installed MPAS-BMatrix code, including configuration,
-templates and the JACI environment loader.
-
-The public CLI derives this root from the package location. A normal user should
-not need to define `BMATRIX_ROOT`.
+This is the checked-out/installed MPAS-BMatrix code containing configuration,
+templates and the JACI environment loader. The public CLI normally derives it
+from the package location; `BMATRIX_ROOT` is an advanced override only.
 
 ### User workspace
 
@@ -78,16 +211,13 @@ Resolved key:
 project.work_root
 ```
 
-Meaning: persistent area in which MPAS-BMatrix creates BFLOW, covariance and
-plot workspaces and their products.
-
-On JACI the default is:
+The default JACI location is:
 
 ```text
 /p/projetos/monan_das/<USER>/work/MPAS-BMatrix
 ```
 
-The current deterministic layout below this root is:
+The deterministic layout is:
 
 ```text
 <WORK_ROOT>/
@@ -104,15 +234,8 @@ The current deterministic layout below this root is:
     └── plots/
 ```
 
-`mpas-bmatrix setup` creates the stable parent directories for this layout. The
-specific run directory is created when the workflow knows the period and MPI
-size.
-
-The user's minimal `site`/`workspace` choice is stored separately in:
-
-```text
-~/.config/mpas-bmatrix/setup.yaml
-```
+`setup` creates only the stable parent directories. Run-specific directories are
+created when the workflow knows the date range and MPI size.
 
 ### MONAN-JEDI / MPAS-JEDI installation
 
@@ -124,9 +247,7 @@ install.atmosphere_share
 install.unbalance_executable
 ```
 
-Meaning: the **installed runtime**, not the MONAN-JEDI source checkout.
-
-A compatible installation is expected to contain at least:
+A compatible installation is expected to provide at least:
 
 ```text
 <install>/bin/mpasjedi_error_covariance_toolbox.x
@@ -135,14 +256,14 @@ A compatible installation is expected to contain at least:
 <install>/share/MPAS/core_atmosphere/
 ```
 
-`install.unbalance_executable` is derived conventionally as:
+The standard UNBALANCE executable is derived as:
 
 ```text
 <install.root>/bin/mpasjedi_unbalance_ensemble.x
 ```
 
-so a separate `MONAN_JEDI_UNBALANCE_EXE` variable is no longer required for the
-standard installation.
+A separate `MONAN_JEDI_UNBALANCE_EXE` variable is no longer required by the
+standard path.
 
 ### MPAS mesh
 
@@ -153,31 +274,24 @@ mesh.grid
 mesh.graph
 mesh.partitions_dir
 mesh.nproc
+mesh.nvertlevels
 ```
 
-For `x1.10242`, the current case expects a mesh tree equivalent to:
+For x1.10242 the current physical layout is equivalent to:
 
 ```text
 MPAS_MESH_ROOT/
 └── quasi_uniform/
     └── x1.10242_240km/
-        ├── mesh/
-        │   └── x1.10242.grid.nc
-        ├── graph/
-        │   └── x1.10242.graph.info
-        └── partitions/
-            └── x1.10242.graph.info.part.128
+        ├── mesh/x1.10242.grid.nc
+        ├── graph/x1.10242.graph.info
+        └── partitions/x1.10242.graph.info.part.128
 ```
 
-The files represent:
+The `doctor` derives the required partition filename from `mesh.graph` and the
+configured `mesh.nproc`.
 
-- `x1.10242.grid.nc`: MPAS horizontal geometry and connectivity;
-- `x1.10242.graph.info`: graph representation used for partitioning;
-- `x1.10242.graph.info.part.128`: partition matching the configured 128 MPI ranks.
-
-These are input resources. They are not generated by the B-matrix stages.
-
-### MPAS/MPAS-JEDI static files
+### Static x1.10242 inputs
 
 Resolved keys:
 
@@ -188,8 +302,7 @@ static.geovars
 static.keptvars
 ```
 
-The x1.10242 static root must contain files compatible with the installed MPAS
-Registry, including at least:
+The resource catalog currently declares these static files:
 
 ```text
 x1.10242.invariant.nc
@@ -200,15 +313,26 @@ stream_list.atmosphere.background
 stream_list.atmosphere.ensemble
 ```
 
-Their roles are:
+`geovars.yaml` and `keptvars.yaml` are still obtained from the MONAN-JEDI source
+checkout:
 
-- `x1.10242.invariant.nc`: invariant/static MPAS state for this mesh;
-- `namelist.atmosphere_240km`: MPAS runtime configuration used by the case;
-- `streams.atmosphere_240km`: MPAS stream definitions;
-- `stream_list.atmosphere.*`: variables expected in analysis/background/ensemble spaces.
+```text
+mpas-jedi/test/testinput/namelists/geovars.yaml
+mpas-jedi/test/testinput/namelists/keptvars.yaml
+```
 
-The installed MPAS atmosphere share directory must also provide the physics
-resources checked by `doctor`, including:
+This source-tree dependency is transitional and should disappear once these
+validated resources are incorporated into a shared/versioned resource bundle.
+
+### MPAS atmosphere share
+
+The resource catalog also declares the MPAS runtime tables expected below:
+
+```text
+<MONAN_JEDI_INSTALL>/share/MPAS/core_atmosphere/
+```
+
+including:
 
 ```text
 CAM_ABS_DATA.DBL
@@ -225,19 +349,6 @@ VEGPARM.TBL
 VERSION
 ```
 
-### `geovars.yaml` and `keptvars.yaml`
-
-The current case still resolves these from:
-
-```text
-MONAN-JEDI/mpas-jedi/test/testinput/namelists/geovars.yaml
-MONAN-JEDI/mpas-jedi/test/testinput/namelists/keptvars.yaml
-```
-
-This is a **transitional dependency**. It is the reason the current runtime may
-still discover a MONAN-JEDI source checkout. The planned resource-bundle work
-will move these validated runtime resources out of the source-tree dependency.
-
 ### spack-stack
 
 Resolved through:
@@ -246,81 +357,107 @@ Resolved through:
 environment.variables.STACK_ROOT
 ```
 
-Meaning: the spack-stack root from which the JACI site setup and the MPAS-JEDI
-environment module are loaded inside generated PBS jobs.
+This is site/runtime infrastructure used by generated PBS jobs to load the JACI
+MPAS-JEDI environment. It is not a scientific parameter.
 
-This is site infrastructure, not scientific configuration.
+## 7. Advanced overrides
 
-## 3. Automatic discovery and precedence
+The recommended persistent interface for a non-standard layout is `setup`:
 
-The public CLI resolves runtime roots before composing the YAML.
-
-Precedence is:
-
-```text
-explicit command argument (where available)
-        ↓
-explicit environment override
-        ↓
-command/site discovery
-        ↓
-safe site default
-        ↓
-unresolved resource reported by doctor
+```bash
+mpas-bmatrix setup --site jaci \
+  --monan-jedi-install /path/to/install \
+  --mesh-root /path/to/meshes \
+  --static-root /path/to/static \
+  --monan-jedi-source /path/to/MONAN-JEDI \
+  --stack-root /path/to/spack-stack
 ```
 
-Examples of JACI discovery currently include:
+Equivalent environment variables remain supported for one-off/developer use:
 
-- MPAS-JEDI install from an already available covariance-toolbox command or the
-  conventional user build location;
-- MPAS mesh from the conventional user mesh tree;
-- static x1.10242 files from known current JACI locations;
-- the most recent matching spack-stack overlay in the user project area;
-- MONAN-JEDI source only for the transitional `geovars.yaml`/`keptvars.yaml` dependency.
+| Variable | Represents |
+| --- | --- |
+| `WORK_ROOT` | user workspace root |
+| `MONAN_JEDI_INSTALL` | installed MPAS-JEDI/SABER prefix |
+| `MPAS_MESH_ROOT` | physical MPAS mesh collection root |
+| `MPAS_JEDI_STATIC_ROOT` | physical static-resource root |
+| `MONAN_JEDI_SOURCE` | transitional MONAN-JEDI source checkout |
+| `STACK_ROOT` | spack-stack root |
+| `BMATRIX_ROOT` | MPAS-BMatrix checkout; rarely needed |
 
-Inspect the result with:
+After changing any physical root, run:
 
 ```bash
 mpas-bmatrix paths
-```
-
-The command reports both the resolved value and its source (`environment`,
-`discovered`, `site-default`, `user-config`, `argument` or `package`).
-
-## 4. Advanced environment overrides
-
-Explicit variables remain supported for non-standard layouts. They are
-**overrides**, not the recommended first-run interface.
-
-| Variable | Represents | Expected content |
-| --- | --- | --- |
-| `WORK_ROOT` | User workspace root | writable persistent directory |
-| `MONAN_JEDI_INSTALL` | Installed MPAS-JEDI/SABER prefix | `bin/`, `share/MPAS/...` and required executables |
-| `MPAS_MESH_ROOT` | MPAS mesh collection root | x1.10242 grid, graph and partitions tree |
-| `MPAS_JEDI_STATIC_ROOT` | Validated x1.10242 static root | invariant, namelist, streams and stream lists |
-| `MONAN_JEDI_SOURCE` | Transitional MONAN-JEDI source root | current `geovars.yaml` and `keptvars.yaml` paths |
-| `STACK_ROOT` | JACI spack-stack root | site config and environment module tree |
-| `BMATRIX_ROOT` | MPAS-BMatrix checkout | normally derived automatically; advanced override only |
-
-The old standard requirement for `MONAN_JEDI_UNBALANCE_EXE` has been removed.
-The standard executable location is derived from `MONAN_JEDI_INSTALL`.
-
-Run:
-
-```bash
 mpas-bmatrix doctor
 ```
 
-after any override. `doctor` verifies concrete files rather than accepting a
-path merely because a variable is defined.
+The application does not accept a path merely because it was configured;
+`doctor` checks the concrete prerequisites at the resolved locations.
 
-### Variables needed inside PBS jobs
+## 8. What `doctor` validates
 
-Do not assume arbitrary login-shell variables will be inherited by PBS compute
-jobs. Values needed before the JACI environment loader runs belong under
+`doctor` consumes the selected site/resource and the composed config. It checks
+both the logical contract and concrete filesystem/runtime prerequisites.
+
+Current logical checks include:
+
+```text
+selected resource mesh name == configured mesh.name
+catalog nVertLevels == configured mesh.nvertlevels
+```
+
+Current filesystem/runtime checks include:
+
+```text
+repository/workspace roots
+MONAN-JEDI install and atmosphere share
+required executable files + execute permission
+mesh grid and graph
+partitions directory and np<NPROC> partition file
+invariant/static root
+geovars.yaml and keptvars.yaml
+resource-catalog static files
+resource-catalog MPAS atmosphere files
+spack-stack root
+```
+
+A final:
+
+```text
+READY
+```
+
+means the resolved **preflight prerequisites** are present. It does not replace a
+real PBS launch or the complete end-to-end smoke.
+
+## 9. `check-config` versus `doctor`
+
+`check-config` validates composition of the YAML/scientific contract. It does not
+claim runtime readiness.
+
+Human output ends with:
+
+```text
+Configuration status: VALID
+Runtime readiness: NOT CHECKED by this command; run 'mpas-bmatrix doctor'.
+```
+
+Use:
+
+```bash
+mpas-bmatrix check-config --json
+```
+
+for the full composed mapping.
+
+## 10. Values needed inside PBS jobs
+
+Do not assume arbitrary login-shell variables are inherited by compute jobs.
+Values required before the JACI environment loader runs belong under
 `environment.variables` in `configs/jaci.yaml`.
 
-For example:
+Example:
 
 ```yaml
 environment:
@@ -329,10 +466,11 @@ environment:
     STACK_ROOT: ${STACK_ROOT}
 ```
 
-The scheduler writes the resolved value into each PBS script before sourcing the
-loader. This avoids relying on `qsub -V` and makes the bootstrap auditable.
+The scheduler writes the resolved value into the generated PBS script before
+sourcing the loader. This avoids relying on `qsub -V` and keeps the bootstrap
+auditable.
 
-## 5. Include semantics
+## 11. Include semantics
 
 A YAML may include one file:
 
@@ -388,24 +526,26 @@ pbs:
     bmatrix: "04:00:00"
 ```
 
-## 6. Where to change a scientific or site value
+## 12. Where to change a value
 
 | Change | File/interface |
 | --- | --- |
-| Normal JACI workspace | `mpas-bmatrix setup --workspace ...` |
-| Non-standard site/install root | advanced environment override or site profile |
-| JACI queue/walltime/environment loader | `configs/jaci.yaml` |
-| MPAS mesh, partition count, vertical levels or static-file contract | `configs/jaci-x1.10242.yaml` |
+| Normal user site/workspace/resource | `mpas-bmatrix setup` |
+| Private/non-standard physical root | `mpas-bmatrix setup --<root> ...` |
+| Machine resolution policy | `configs/sites/<site>.yaml` |
+| Logical mesh/resource prerequisites | `configs/resources/<resource>.yaml` |
+| JACI PBS queue/walltime/environment loader | `configs/jaci.yaml` |
+| Runnable mesh case, ranks and vertical levels | `configs/jaci-x1.10242.yaml` |
 | Control names/aliases and 3D/2D grouping | `configs/bmatrix/x1.10242/controls.yaml` |
 | NMC/BFLOW preprocessing | `configs/bmatrix/x1.10242/bflow.yaml` |
-| Vertical-balance calibration/inverse settings | `configs/bmatrix/x1.10242/vbal.yaml` |
-| K2^-1 BUMP read flags | `configs/bmatrix/x1.10242/unbalance.yaml` |
+| Vertical-balance calibration/inverse | `configs/bmatrix/x1.10242/vbal.yaml` |
+| K2^-1 UNBALANCE scientific read flags | `configs/bmatrix/x1.10242/unbalance.yaml` |
 | HDIAG statistics | `configs/bmatrix/x1.10242/hdiag.yaml` |
 | NICAS | `configs/bmatrix/x1.10242/nicas.yaml` |
 | Single-observation validation | `configs/bmatrix/x1.10242/so.yaml` |
-| Complete-B DIRAC control and paired points | `configs/bmatrix/x1.10242/dirac.yaml` |
+| Complete-B DIRAC control/points | `configs/bmatrix/x1.10242/dirac.yaml` |
 
-## 7. Stage-specific clarity rules
+## 13. Stage-specific clarity rules
 
 ### Control names
 
@@ -428,7 +568,7 @@ The executable is infrastructure:
 install.unbalance_executable
 ```
 
-The scientific fragment contains only the BUMP read contract used to apply the
+The stage scientific fragment contains the BUMP read contract used to apply the
 calibrated balance:
 
 ```text
@@ -447,12 +587,13 @@ points:
   - {latitude: -34.60250161, longitude: -58.39753137}
 ```
 
-`index` is one-based and selects one mapping. The renderer converts this form to
-`dirLats`, `dirLons`, `ildir` and `dirvar` for the toolbox.
+`index` is one-based and selects one mapping. The renderer converts it to the
+keys required by the toolbox.
 
-## 8. Rebuild rules
+## 14. Rebuild rules
 
-A configuration change invalidates that stage and all downstream stages:
+A scientific configuration change invalidates that stage and all downstream
+stages:
 
 ```text
 controls or BFLOW
@@ -482,28 +623,32 @@ DIRAC point/control/background list
 
 Run from the earliest invalid stage with `--clean`.
 
-## 9. Adding another mesh/case
+A site/root change is different: first rerun `paths` and `doctor`, then regenerate
+from the earliest stage whose inputs/runtime changed.
 
-For a new mesh, create the scientific/case definitions needed by the existing
-configuration hierarchy and add a resource manifest/catalog entry once the
-resource-bundle layer is available.
+## 15. Adding another mesh/resource
 
-Until that layer is complete, a developer adding a mesh should:
+For a new mesh:
 
-1. copy the runnable case and replace mesh/static/runtime settings;
-2. verify all mesh-specific static files and partitions;
-3. reuse scientific fragments only after verifying the same assumptions;
-4. add configuration-composition and `doctor` checks;
-5. run unit tests and a JACI end-to-end smoke test.
+1. add `configs/resources/<mesh>.yaml` describing the logical resource;
+2. add or adapt the runnable case YAML with mesh-specific ranks/static settings;
+3. add site-profile resolution only for actual machine policy, not a developer's
+   private directory;
+4. verify partitions, vertical-level assumptions and static files;
+5. reuse scientific fragments only after reviewing their assumptions;
+6. add composition/resource/doctor tests;
+7. run the complete JACI/system smoke.
 
-Do not reuse x1.10242 sampling sizes, vertical levels, partitions or static files
-without checking compatibility with the new mesh.
+Do not copy x1.10242 sampling sizes, vertical levels, partitions or static files
+without checking compatibility.
 
-## 10. Local scientific overrides
+## 16. Local scientific overrides
 
-Avoid editing committed YAML only to change personal roots. For an intentional
-scientific experiment, create a case file that includes the official case and
-overrides only the required mapping:
+Do not edit committed files merely to change personal roots. Physical-path
+changes belong to the user/site resolution layer.
+
+For an intentional scientific experiment, create a case that includes the
+official case and overrides only the required scientific/runtime mapping:
 
 ```yaml
 # configs/jaci-x1.10242-experiment.yaml
@@ -517,11 +662,14 @@ pbs:
 Because lists are atomic, overriding `controls`, `relations`, `points` or
 `background_variables` requires repeating the complete intended list.
 
-## 11. Audit and implementation reports
+## 17. Related documents
 
-- [`configuration-audit.md`](configuration-audit.md): how the original files
-  were used and which keys were obsolete.
+- [`getting-started.md`](getting-started.md): first-run operator flow;
+- [`resolution-model.md`](resolution-model.md): source precedence and
+  non-standard layouts;
+- [`configuration-audit.md`](configuration-audit.md): historical configuration
+  audit;
 - [`configuration-reorganization.md`](configuration-reorganization.md):
-  ownership, corrections, compatibility behavior and tests.
-- [`getting-started.md`](getting-started.md): user-facing setup, discovery,
-  validation and path meanings.
+  configuration ownership and prior corrections;
+- [`end-to-end-tutorial.md`](end-to-end-tutorial.md): complete system acceptance
+  test.
