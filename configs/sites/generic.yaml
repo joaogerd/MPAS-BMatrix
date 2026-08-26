@@ -1,0 +1,14 @@
+# Generic MPAS-BMatrix site profile.
+#
+# No machine-specific runtime/resource locations are assumed. Users on unknown
+# systems provide only the paths that cannot be resolved from their environment.
+
+site: generic
+
+workspace:
+  default: ${HOME}/MPAS-BMatrix-work
+
+resources:
+  default: x1.10242
+
+runtime: {}
