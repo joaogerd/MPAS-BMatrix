@@ -1,8 +1,8 @@
 """User-facing environment discovery and diagnostics for MPAS-BMatrix.
 
-The public CLI uses this module to turn machine conventions into resolved paths
-without hiding what was selected. Explicit environment variables always win;
-automatic discovery only fills missing values.
+The public CLI turns machine conventions into resolved paths without hiding what
+was selected. Command arguments and explicit environment variables remain
+available as overrides; automatic discovery fills only missing values.
 """
 from __future__ import annotations
 
@@ -24,8 +24,6 @@ SUPPORTED_SITES = ("jaci", "generic")
 
 @dataclass(frozen=True, slots=True)
 class ResolvedPath:
-    """One path selected for the runtime plus the reason it was selected."""
-
     name: str
     value: str
     source: str
@@ -42,8 +40,6 @@ class ResolvedPath:
 
 @dataclass(frozen=True, slots=True)
 class RuntimeDiscovery:
-    """Resolved user/site paths applied before YAML composition."""
-
     site: str
     values: tuple[ResolvedPath, ...]
 
@@ -66,7 +62,7 @@ class RuntimeDiscovery:
 
 
 def repository_root() -> Path:
-    """Return the checkout root from the installed/imported package location."""
+    """Return the checkout root for the editable/install layout used by this project."""
     return Path(__file__).resolve().parents[2]
 
 
@@ -80,7 +76,6 @@ def _read_user_setup(path: Path = USER_CONFIG) -> dict[str, str]:
 
 
 def detect_site(explicit: str | None = None) -> str:
-    """Select the active site without requiring configuration for known JACI paths."""
     if explicit:
         site = explicit.lower()
     elif os.environ.get("MPAS_BMATRIX_SITE"):
@@ -99,7 +94,6 @@ def detect_site(explicit: str | None = None) -> str:
 
 
 def default_workspace(site: str) -> Path:
-    """Return the conventional work root for a site."""
     if site == "jaci":
         return Path("/p/projetos/monan_das") / getpass.getuser() / "work" / "MPAS-BMatrix"
     return Path.home() / "MPAS-BMatrix-work"
@@ -107,9 +101,9 @@ def default_workspace(site: str) -> Path:
 
 def _first_existing(candidates: Iterable[Path]) -> Path | None:
     for candidate in candidates:
-        expanded = candidate.expanduser()
-        if expanded.exists():
-            return expanded.resolve()
+        candidate = candidate.expanduser()
+        if candidate.exists():
+            return candidate.resolve()
     return None
 
 
@@ -129,25 +123,21 @@ def _prefix_from_command(command: str) -> Path | None:
     return path.parent.parent if path.parent.name == "bin" else path.parent
 
 
-def _resolve(
+def _resolved(
     name: str,
-    *,
     description: str,
-    explicit: str | None = None,
+    *,
+    environment: str | None = None,
     discovered: Path | None = None,
 ) -> ResolvedPath:
-    if explicit:
-        return ResolvedPath(name, str(Path(explicit).expanduser()), "environment", description)
+    if environment:
+        return ResolvedPath(name, str(Path(environment).expanduser()), "environment", description)
     if discovered is not None:
         return ResolvedPath(name, str(discovered), "discovered", description)
     return ResolvedPath(name, "", "unresolved", description)
 
 
-def _work_root(
-    site: str,
-    saved: Mapping[str, str],
-    workspace: str | Path | None,
-) -> ResolvedPath:
+def _work_root(site: str, saved: Mapping[str, str], workspace: str | Path | None) -> ResolvedPath:
     description = "Raiz persistente dos workspaces e produtos gerados pelo usuário."
     if workspace is not None:
         return ResolvedPath("WORK_ROOT", str(Path(workspace).expanduser()), "argument", description)
@@ -163,92 +153,88 @@ def discover_runtime(
     site: str | None = None,
     workspace: str | Path | None = None,
 ) -> RuntimeDiscovery:
-    """Resolve runtime roots using explicit overrides first and site conventions second."""
+    """Resolve current runtime roots with transparent precedence."""
     active_site = detect_site(site)
     saved = _read_user_setup()
     user = getpass.getuser()
-    jaci_user_root = Path("/p/projetos/monan_das") / user
+    jaci_root = Path("/p/projetos/monan_das") / user
 
-    install_discovered = _prefix_from_command("mpasjedi_error_covariance_toolbox.x")
-    if install_discovered is None and active_site == "jaci":
-        install_discovered = _first_existing((jaci_user_root / "builds" / "monan-jedi-mpas",))
-
-    source_discovered = None
-    mesh_discovered = None
-    static_discovered = None
-    stack_discovered = None
+    install = _prefix_from_command("mpasjedi_error_covariance_toolbox.x")
+    source = mesh = static = stack = None
     if active_site == "jaci":
-        source_discovered = _first_existing((jaci_user_root / "projects" / "MONAN-JEDI",))
-        mesh_discovered = _first_existing((jaci_user_root / "projects" / "mpas_meshes",))
-        static_discovered = _first_existing(
+        install = install or _first_existing((jaci_root / "builds" / "monan-jedi-mpas",))
+        source = _first_existing((jaci_root / "projects" / "MONAN-JEDI",))
+        mesh = _first_existing((jaci_root / "projects" / "mpas_meshes",))
+        static = _first_existing(
             (
-                jaci_user_root / "external-inputs" / "MPAS-BMatrix" / "x1.10242" / "static-files",
-                jaci_user_root
+                jaci_root / "external-inputs" / "MPAS-BMatrix" / "x1.10242" / "static-files",
+                jaci_root
                 / "external-inputs"
                 / "mpasjedi_tutorial202509NCAR"
                 / "MPAS_namelist_stream_physics_files",
             )
         )
-        stack_discovered = _latest_glob(
+        stack = _latest_glob(
             f"p/projetos/monan_das/{user}/work/spack-stack-inpe-overlay-*/spack-stack"
-        )
-        if stack_discovered is None:
-            stack_discovered = _first_existing((jaci_user_root / "work" / "spack-stack",))
+        ) or _first_existing((jaci_root / "work" / "spack-stack",))
 
-    bmatrix_description = "Checkout do MPAS-BMatrix usado pela CLI e pelos scripts PBS."
     if os.environ.get("BMATRIX_ROOT"):
         bmatrix_root = ResolvedPath(
-            "BMATRIX_ROOT", os.environ["BMATRIX_ROOT"], "environment", bmatrix_description
+            "BMATRIX_ROOT",
+            os.environ["BMATRIX_ROOT"],
+            "environment",
+            "Checkout do MPAS-BMatrix usado pela CLI e pelos scripts PBS.",
         )
     else:
         bmatrix_root = ResolvedPath(
-            "BMATRIX_ROOT", str(repository_root()), "package", bmatrix_description
+            "BMATRIX_ROOT",
+            str(repository_root()),
+            "package",
+            "Checkout do MPAS-BMatrix usado pela CLI e pelos scripts PBS.",
         )
 
     values = (
         bmatrix_root,
         _work_root(active_site, saved, workspace),
-        _resolve(
+        _resolved(
             "MONAN_JEDI_INSTALL",
-            description="Prefixo da instalação MPAS-JEDI/SABER que contém bin/ e share/.",
-            explicit=os.environ.get("MONAN_JEDI_INSTALL"),
-            discovered=install_discovered,
+            "Prefixo da instalação MPAS-JEDI/SABER que contém bin/ e share/.",
+            environment=os.environ.get("MONAN_JEDI_INSTALL"),
+            discovered=install,
         ),
-        _resolve(
+        _resolved(
             "MPAS_MESH_ROOT",
-            description="Raiz das malhas MPAS; será substituída pelo catálogo de recursos.",
-            explicit=os.environ.get("MPAS_MESH_ROOT"),
-            discovered=mesh_discovered,
+            "Raiz das malhas MPAS; será substituída pelo catálogo de recursos.",
+            environment=os.environ.get("MPAS_MESH_ROOT"),
+            discovered=mesh,
         ),
-        _resolve(
+        _resolved(
             "MPAS_JEDI_STATIC_ROOT",
-            description="Arquivos estáticos validados; futuramente virão de um resource bundle.",
-            explicit=os.environ.get("MPAS_JEDI_STATIC_ROOT"),
-            discovered=static_discovered,
+            "Arquivos estáticos validados; futuramente virão de um resource bundle.",
+            environment=os.environ.get("MPAS_JEDI_STATIC_ROOT"),
+            discovered=static,
         ),
-        _resolve(
+        _resolved(
             "MONAN_JEDI_SOURCE",
-            description=(
-                "Checkout MONAN-JEDI usado apenas pelo legado geovars/keptvars; "
-                "será removido do runtime."
-            ),
-            explicit=os.environ.get("MONAN_JEDI_SOURCE"),
-            discovered=source_discovered,
+            "Checkout usado apenas pelo legado geovars/keptvars; será removido do runtime.",
+            environment=os.environ.get("MONAN_JEDI_SOURCE"),
+            discovered=source,
         ),
-        _resolve(
+        _resolved(
             "STACK_ROOT",
-            description="spack-stack usado pelo perfil JACI para carregar o runtime MPAS-JEDI.",
-            explicit=os.environ.get("STACK_ROOT"),
-            discovered=stack_discovered,
+            "spack-stack usado pelo perfil JACI para carregar o runtime MPAS-JEDI.",
+            environment=os.environ.get("STACK_ROOT"),
+            discovered=stack,
         ),
     )
     return RuntimeDiscovery(active_site, values)
 
 
 def apply_runtime(discovery: RuntimeDiscovery) -> None:
-    """Populate only environment variables the user has not explicitly defined."""
+    """Fill missing shell variables without replacing explicit non-empty values."""
     for name, value in discovery.as_environment().items():
-        os.environ.setdefault(name, value)
+        if not os.environ.get(name):
+            os.environ[name] = value
 
 
 def load_runtime_config(
@@ -257,14 +243,13 @@ def load_runtime_config(
     site: str | None = None,
     workspace: str | Path | None = None,
 ) -> tuple[Config, RuntimeDiscovery]:
-    """Discover runtime roots, apply them, and load the existing composed YAML contract."""
     discovery = discover_runtime(site=site, workspace=workspace)
     apply_runtime(discovery)
     return load_config(path), discovery
 
 
 def save_setup(*, site: str, workspace: str | Path, path: Path = USER_CONFIG) -> Path:
-    """Persist only user choices; machine/resource paths remain automatically resolved."""
+    """Persist only user choices; machine/resource paths stay discoverable."""
     target = path.expanduser()
     target.parent.mkdir(parents=True, exist_ok=True)
     data = {"site": detect_site(site), "workspace": str(Path(workspace).expanduser().resolve())}
@@ -277,19 +262,22 @@ def setup_environment(
     site: str,
     workspace: str | Path | None = None,
 ) -> tuple[Path, RuntimeDiscovery]:
-    """Create the user workspace and persist the minimal site/workspace selection."""
+    """Create only directories that match the current deterministic pipeline layout."""
     active_site = detect_site(site)
     root = Path(workspace).expanduser() if workspace else default_workspace(active_site)
     root.mkdir(parents=True, exist_ok=True)
-    for child in ("config", "data", "work", "output", "logs"):
-        (root / child).mkdir(exist_ok=True)
+    for child in (
+        "bmatrix/bflow_preprocessing",
+        "bmatrix/covariance",
+        "bmatrix/plots",
+    ):
+        (root / child).mkdir(parents=True, exist_ok=True)
     setup_path = save_setup(site=active_site, workspace=root)
-    discovery = discover_runtime(site=active_site, workspace=root)
-    return setup_path, discovery
+    return setup_path, discover_runtime(site=active_site, workspace=root)
 
 
 def config_path_rows(config: Mapping[str, object]) -> list[tuple[str, str, str]]:
-    """Return important resolved configuration paths and their roles."""
+    """Return important resolved paths and their user-facing roles."""
     rows: list[tuple[str, str, str]] = []
     project = config.get("project", {})
     install = config.get("install", {})
@@ -319,9 +307,11 @@ def config_path_rows(config: Mapping[str, object]) -> list[tuple[str, str, str]]
 
 
 def doctor_checks(config: Mapping[str, object]) -> list[tuple[str, Path, str]]:
-    """Build concrete filesystem checks for the resolved configuration."""
-    rows = config_path_rows(config)
-    checks = [(label, Path(value).expanduser(), role) for label, value, role in rows]
+    """Build concrete filesystem checks for the resolved x1.10242 configuration."""
+    checks = [
+        (label, Path(value).expanduser(), role)
+        for label, value, role in config_path_rows(config)
+    ]
 
     mesh = config.get("mesh", {})
     if isinstance(mesh, Mapping) and mesh.get("graph") and mesh.get("nproc"):
