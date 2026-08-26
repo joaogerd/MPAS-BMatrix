@@ -26,8 +26,16 @@ DEFAULT_CONFIG = str(repository_root() / "configs" / "jaci-x1.10242.yaml")
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", default=DEFAULT_CONFIG, help="YAML de plataforma que referencia o contrato científico.")
-    parser.add_argument("--bflow-workspace", type=Path, help="Workspace BFLOW; quando omitido é determinístico.")
+    parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG,
+        help="YAML de plataforma que referencia o contrato científico.",
+    )
+    parser.add_argument(
+        "--bflow-workspace",
+        type=Path,
+        help="Workspace BFLOW; quando omitido é determinístico.",
+    )
 
 
 def _add_pair_source(parser: argparse.ArgumentParser) -> None:
@@ -58,18 +66,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    setup = sub.add_parser("setup", help="Configura o mínimo necessário para usar MPAS-BMatrix no site selecionado.")
+    setup = sub.add_parser(
+        "setup",
+        help="Configura o mínimo necessário para usar MPAS-BMatrix no site selecionado.",
+    )
     setup.add_argument("--site", choices=SUPPORTED_SITES, default="jaci")
     setup.add_argument("--workspace", type=Path, help="Raiz de trabalho; no JACI há um default por usuário.")
     setup.set_defaults(handler=_setup)
 
-    doctor = sub.add_parser("doctor", help="Verifica ambiente, executáveis, malha e arquivos estáticos antes de rodar.")
+    doctor = sub.add_parser(
+        "doctor",
+        help="Verifica ambiente, executáveis, malha e arquivos estáticos antes de rodar.",
+    )
     doctor.add_argument("--config", default=DEFAULT_CONFIG)
     doctor.add_argument("--site", choices=SUPPORTED_SITES)
     doctor.add_argument("--json", action="store_true", help="Emite diagnóstico estruturado em JSON.")
     doctor.set_defaults(handler=_doctor)
 
-    paths = sub.add_parser("paths", help="Mostra os caminhos resolvidos e explica o papel de cada recurso.")
+    paths = sub.add_parser(
+        "paths",
+        help="Mostra os caminhos resolvidos e explica o papel de cada recurso.",
+    )
     paths.add_argument("--config", default=DEFAULT_CONFIG)
     paths.add_argument("--site", choices=SUPPORTED_SITES)
     paths.add_argument("--json", action="store_true", help="Emite os caminhos em JSON.")
@@ -80,13 +97,19 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--json", action="store_true", help="Mostra a configuração completa em JSON.")
     check.set_defaults(handler=_check_config)
 
-    weights = sub.add_parser("weights", help="Gera apenas pesos ESMPy MPAS <-> lat-lon no workspace BFLOW.")
+    weights = sub.add_parser(
+        "weights",
+        help="Gera apenas pesos ESMPy MPAS <-> lat-lon no workspace BFLOW.",
+    )
     _add_common(weights)
     _add_pair_source(weights)
     weights.add_argument("--force", action="store_true", help="Regenera ambos os arquivos de peso.")
     weights.set_defaults(handler=_weights)
 
-    build_command = sub.add_parser("build", help="Executa BFLOW, VBAL, UNBALANCE, HDIAG, NICAS, SO, DIRAC e PLOTS.")
+    build_command = sub.add_parser(
+        "build",
+        help="Executa BFLOW, VBAL, UNBALANCE, HDIAG, NICAS, SO, DIRAC e PLOTS.",
+    )
     _add_common(build_command)
     _add_pair_source(build_command)
     build_command.add_argument("--from-stage", choices=STAGES, default="bflow")
@@ -158,8 +181,12 @@ def _setup(args: argparse.Namespace) -> int:
     print(f"Workspace: {workspace}")
     print(f"User setup: {setup_path}")
     print()
-    print("Directories:")
-    for child in ("config", "data", "work", "output", "logs"):
+    print("Current pipeline layout:")
+    for child in (
+        "bmatrix/bflow_preprocessing",
+        "bmatrix/covariance",
+        "bmatrix/plots",
+    ):
         print(f"  {Path(workspace) / child}")
     print()
     unresolved = [item for item in discovery.values if not item.value]
@@ -215,7 +242,16 @@ def _doctor(args: argparse.Namespace) -> int:
     ]
     ready = all(item["ok"] for item in result)
     if args.json:
-        print(dump_json({"site": discovery.site, "ready": ready, "checks": result, "discovery": discovery.as_dict()}))
+        print(
+            dump_json(
+                {
+                    "site": discovery.site,
+                    "ready": ready,
+                    "checks": result,
+                    "discovery": discovery.as_dict(),
+                }
+            )
+        )
         return 0 if ready else 1
 
     print("MPAS-BMatrix doctor")
@@ -244,7 +280,8 @@ def _paths(args: argparse.Namespace) -> int:
                     "site": discovery.site,
                     "discovery": discovery.as_dict(),
                     "resolved_paths": [
-                        {"name": name, "path": path, "role": role} for name, path, role in rows
+                        {"name": name, "path": path, "role": role}
+                        for name, path, role in rows
                     ],
                 }
             )
@@ -338,7 +375,13 @@ def _plots(args: argparse.Namespace) -> int:
 def _products(args: argparse.Namespace) -> int:
     config = _config(args)
     resolved = plan(config, _request(args))
-    print(json.dumps({key: str(value) for key, value in asdict(resolved.final_products).items()}, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            {key: str(value) for key, value in asdict(resolved.final_products).items()},
+            indent=2,
+            sort_keys=True,
+        )
+    )
     return 0
 
 
