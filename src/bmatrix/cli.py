@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -202,6 +203,14 @@ def _setup(args: argparse.Namespace) -> int:
     return 0
 
 
+def _path_ok(label: str, path: Path) -> bool:
+    """Use an executable check for runtime programs and existence for data paths."""
+    executable = label.endswith(".x") or "executable" in label.lower()
+    if executable:
+        return path.is_file() and os.access(path, os.X_OK)
+    return path.exists()
+
+
 def _doctor(args: argparse.Namespace) -> int:
     discovery = discover_runtime(site=args.site)
     unresolved = [item for item in discovery.values if not item.value]
@@ -219,13 +228,20 @@ def _doctor(args: argparse.Namespace) -> int:
             print("==================")
             print(f"Site: {discovery.site}")
             print()
+            print("Resolved/discovered roots:")
+            for item in discovery.values:
+                value = item.value or "<unresolved>"
+                marker = "OK" if item.value else "MISSING"
+                print(f"  [{marker}] {item.name}: {value}")
+                print(f"       source: {item.source}")
+            print()
             print("Unresolved resources:")
             for item in unresolved:
                 print(f"  [MISSING] {item.name}")
                 print(f"            {item.description}")
             print()
             print("Explicit environment variables remain supported as overrides.")
-            print("Use 'mpas-bmatrix paths' after resolving these resources.")
+            print("Use 'mpas-bmatrix paths' to inspect discovery even before setup is complete.")
         return 1
 
     apply_runtime(discovery)
@@ -236,7 +252,7 @@ def _doctor(args: argparse.Namespace) -> int:
             "name": label,
             "path": str(path),
             "role": role,
-            "ok": path.exists(),
+            "ok": _path_ok(label, path),
         }
         for label, path, role in checks
     ]
@@ -271,13 +287,45 @@ def _doctor(args: argparse.Namespace) -> int:
 
 
 def _paths(args: argparse.Namespace) -> int:
-    config, discovery = load_runtime_config(args.config, site=args.site)
+    discovery = discover_runtime(site=args.site)
+    unresolved = [item for item in discovery.values if not item.value]
+
+    if unresolved:
+        if args.json:
+            print(
+                dump_json(
+                    {
+                        "site": discovery.site,
+                        "complete": False,
+                        "discovery": discovery.as_dict(),
+                        "unresolved": [item.name for item in unresolved],
+                    }
+                )
+            )
+        else:
+            print("MPAS-BMatrix path discovery")
+            print("==========================")
+            print(f"Site: {discovery.site}")
+            print()
+            for item in discovery.values:
+                value = item.value or "<unresolved>"
+                print(item.name)
+                print(f"  {value}")
+                print(f"  source: {item.source}")
+                print(f"  role: {item.description}")
+            print()
+            print("Configuration-specific file paths cannot be fully expanded yet.")
+            print("Resolve the items marked <unresolved>, then run this command again.")
+        return 1
+
+    config, discovery = load_runtime_config(args.config, site=discovery.site)
     rows = config_path_rows(config)
     if args.json:
         print(
             dump_json(
                 {
                     "site": discovery.site,
+                    "complete": True,
                     "discovery": discovery.as_dict(),
                     "resolved_paths": [
                         {"name": name, "path": path, "role": role}
@@ -300,8 +348,7 @@ def _paths(args: argparse.Namespace) -> int:
     print("Discovery sources")
     print("-----------------")
     for item in discovery.values:
-        value = item.value or "<unresolved>"
-        print(f"{item.name}: {value}")
+        print(f"{item.name}: {item.value}")
         print(f"  source: {item.source}")
     return 0
 
