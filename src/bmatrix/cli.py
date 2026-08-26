@@ -16,12 +16,13 @@ from .onboarding import (
     doctor_checks,
     dump_json,
     load_runtime_config,
+    repository_root,
     setup_environment,
 )
 from .pipeline import BuildRequest, STAGES, build, generate_weights, plan, validate
 from .plots_core.runner import generate_plots
 
-DEFAULT_CONFIG = "configs/jaci-x1.10242.yaml"
+DEFAULT_CONFIG = str(repository_root() / "configs" / "jaci-x1.10242.yaml")
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
