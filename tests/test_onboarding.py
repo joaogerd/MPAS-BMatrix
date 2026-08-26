@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import yaml
 
 from bmatrix.cli import build_parser
@@ -30,12 +28,24 @@ def test_discovery_keeps_explicit_environment_overrides(monkeypatch, tmp_path):
         path.mkdir(parents=True)
         monkeypatch.setenv(name, str(path))
 
-    discovery = discover_runtime(site="generic", workspace=tmp_path / "ignored")
+    discovery = discover_runtime(site="generic")
     resolved = {item.name: item for item in discovery.values}
 
     for name, path in overrides.items():
         assert resolved[name].value == str(path)
         assert resolved[name].source == "environment"
+
+
+def test_workspace_argument_wins_during_setup_discovery(monkeypatch, tmp_path):
+    shell_workspace = tmp_path / "shell-work"
+    requested_workspace = tmp_path / "requested-work"
+    monkeypatch.setenv("WORK_ROOT", str(shell_workspace))
+
+    discovery = discover_runtime(site="generic", workspace=requested_workspace)
+    resolved = {item.name: item for item in discovery.values}
+
+    assert resolved["WORK_ROOT"].value == str(requested_workspace)
+    assert resolved["WORK_ROOT"].source == "argument"
 
 
 def test_save_setup_persists_only_site_and_workspace(tmp_path):
