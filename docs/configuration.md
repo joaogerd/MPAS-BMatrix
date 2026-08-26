@@ -78,8 +78,8 @@ Resolved key:
 project.work_root
 ```
 
-Meaning: persistent area in which MPAS-BMatrix creates BFLOW and covariance
-workspaces and their products.
+Meaning: persistent area in which MPAS-BMatrix creates BFLOW, covariance and
+plot workspaces and their products.
 
 On JACI the default is:
 
@@ -87,14 +87,31 @@ On JACI the default is:
 /p/projetos/monan_das/<USER>/work/MPAS-BMatrix
 ```
 
-`mpas-bmatrix setup` creates a clear user-owned layout below this root:
+The current deterministic layout below this root is:
 
 ```text
-config/   configuration/provenance snapshots
-data/     persistent user data
-work/     execution workspaces
-output/   reusable/final products
-logs/     operational logs
+<WORK_ROOT>/
+└── bmatrix/
+    ├── bflow_preprocessing/
+    │   └── np<NPROC>_<START>_<END>/
+    ├── covariance/
+    │   ├── vbal/
+    │   ├── unbalance/
+    │   ├── hdiag/
+    │   ├── nicas/
+    │   ├── so/
+    │   └── dirac/
+    └── plots/
+```
+
+`mpas-bmatrix setup` creates the stable parent directories for this layout. The
+specific run directory is created when the workflow knows the period and MPI
+size.
+
+The user's minimal `site`/`workspace` choice is stored separately in:
+
+```text
+~/.config/mpas-bmatrix/setup.yaml
 ```
 
 ### MONAN-JEDI / MPAS-JEDI installation
@@ -171,8 +188,8 @@ static.geovars
 static.keptvars
 ```
 
-The x1.10242 static root must contain the files compatible with the installed
-MPAS Registry, including at least:
+The x1.10242 static root must contain files compatible with the installed MPAS
+Registry, including at least:
 
 ```text
 x1.10242.invariant.nc
@@ -241,6 +258,8 @@ The public CLI resolves runtime roots before composing the YAML.
 Precedence is:
 
 ```text
+explicit command argument (where available)
+        ↓
 explicit environment override
         ↓
 command/site discovery
@@ -266,7 +285,7 @@ mpas-bmatrix paths
 ```
 
 The command reports both the resolved value and its source (`environment`,
-`discovered`, `site-default`, `user-config` or `package`).
+`discovered`, `site-default`, `user-config`, `argument` or `package`).
 
 ## 4. Advanced environment overrides
 
@@ -283,14 +302,8 @@ Explicit variables remain supported for non-standard layouts. They are
 | `STACK_ROOT` | JACI spack-stack root | site config and environment module tree |
 | `BMATRIX_ROOT` | MPAS-BMatrix checkout | normally derived automatically; advanced override only |
 
-The old standard requirement for:
-
-```text
-MONAN_JEDI_UNBALANCE_EXE
-```
-
-has been removed. The standard executable location is derived from
-`MONAN_JEDI_INSTALL`.
+The old standard requirement for `MONAN_JEDI_UNBALANCE_EXE` has been removed.
+The standard executable location is derived from `MONAN_JEDI_INSTALL`.
 
 Run:
 
