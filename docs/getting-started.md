@@ -2,13 +2,13 @@
 
 This guide is the recommended first contact with `MPAS-BMatrix`.
 
-The goal is simple: a normal user should choose **where the experiment work will
-live**, while MPAS-BMatrix resolves the known JACI software and data locations,
+The goal is simple: a normal user chooses **where the experiment work will
+live**, while MPAS-BMatrix resolves known JACI software and data locations,
 validates them and shows exactly what will be used.
 
-The workflow remains transparent. Automatic discovery does not mean hidden
-configuration: use `mpas-bmatrix paths`, `doctor` and `check-config --json` to
-inspect every resolved path and configuration value.
+Automatic discovery does not mean hidden configuration. Use `mpas-bmatrix
+paths`, `doctor` and `check-config --json` to inspect every resolved path and
+configuration value.
 
 ## 1. What MPAS-BMatrix does
 
@@ -18,7 +18,7 @@ MPAS-BMatrix starts from same-valid-time NMC forecast pairs and runs:
 mpaswf -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
-`mpaswf` owns the upstream GFS/WPS, MPAS initialization and forecasts.
+`mpaswf` owns upstream GFS/WPS, MPAS initialization and forecasts.
 `MPAS-BMatrix` owns the B-matrix workflow from BFLOW onward.
 
 ## 2. Install
@@ -35,8 +35,8 @@ The public command is:
 mpas-bmatrix
 ```
 
-Normal user documentation should use this command. `PYTHONPATH=src` and
-`python -m bmatrix` are developer/debug interfaces, not the standard workflow.
+Normal user documentation uses this command. `PYTHONPATH=src` and `python -m
+bmatrix` are developer/debug interfaces.
 
 ## 3. First setup
 
@@ -58,25 +58,37 @@ To use another work area:
 mpas-bmatrix setup --site jaci --workspace /path/to/my/workspace
 ```
 
-`setup` creates only the user workspace structure:
+The current pipeline stores runs below:
 
 ```text
-MPAS-BMatrix/
-├── config/    user/run configuration snapshots
-├── data/      persistent user-owned input/intermediate data
-├── work/      stage execution workspaces
-├── output/    reusable/final products
-└── logs/      operational logs and diagnostics
+<WORK_ROOT>/
+└── bmatrix/
+    ├── bflow_preprocessing/
+    │   └── np<NPROC>_<START>_<END>/
+    ├── covariance/
+    │   ├── vbal/
+    │   ├── unbalance/
+    │   ├── hdiag/
+    │   ├── nicas/
+    │   ├── so/
+    │   └── dirac/
+    └── plots/
 ```
 
-It also stores the minimal user selection (`site` and `workspace`) in:
+`setup` creates the stable parent directories used by this layout. Individual
+run directories are created deterministically when a build starts.
+
+The user choice (`site` and `workspace`) is stored in:
 
 ```text
 ~/.config/mpas-bmatrix/setup.yaml
 ```
 
-It does **not** copy scientific data, silently download software or create fake
-placeholder resources.
+This file contains **only user choices**. It does not duplicate scientific
+configuration or machine resource paths.
+
+`setup` does not silently download scientific data or create fake placeholder
+resources.
 
 ## 4. What MPAS-BMatrix resolves automatically
 
@@ -84,28 +96,30 @@ For the current JACI x1.10242 case the CLI resolves these concepts:
 
 | Resource | What it represents | Why it is needed |
 | --- | --- | --- |
-| MPAS-BMatrix repository | Code, configuration and PBS templates for this workflow | Render and orchestrate all stages |
-| User workspace | Persistent area owned by the user | Store workspaces, products and logs |
-| MONAN-JEDI install | Installed MPAS-JEDI/SABER executables and `share/` runtime files | Run VBAL/HDIAG/NICAS/SO/DIRAC |
-| MPAS mesh root | `x1.10242.grid.nc`, graph and MPI partitions | Define the MPAS horizontal geometry |
-| Static root | Invariant, namelist, streams and related static files | Initialize compatible MPAS-JEDI geometry/runtime |
-| MONAN-JEDI source | Current location of `geovars.yaml` and `keptvars.yaml` | Transitional dependency; planned for removal |
-| spack-stack root | JACI MPAS-JEDI runtime environment | Load compiler/MPI/libraries inside PBS jobs |
+| MPAS-BMatrix repository | Code, configuration and PBS templates | Render and orchestrate stages |
+| User workspace | Persistent area owned by the user | Store BFLOW, covariance and plot workspaces |
+| MONAN-JEDI install | Installed MPAS-JEDI/SABER executables and `share/` runtime files | Run covariance and validation stages |
+| MPAS mesh root | `x1.10242.grid.nc`, graph and MPI partitions | Define MPAS horizontal geometry |
+| Static root | Invariant, namelist, streams and stream lists | Provide mesh/runtime static inputs |
+| MONAN-JEDI source | Current location of `geovars.yaml` and `keptvars.yaml` | Transitional dependency only |
+| spack-stack root | JACI MPAS-JEDI runtime environment | Load compiler/MPI/libraries in PBS jobs |
 
 The current discovery order is:
 
 ```text
+explicit command argument (when available)
+        ↓
 explicit environment override
         ↓
 known command/site discovery
         ↓
-site default (when one is safe)
+safe site default
         ↓
 unresolved -> doctor reports the missing resource
 ```
 
-An explicit environment variable is therefore still supported for advanced or
-non-standard installations, but it is no longer the normal first-step interface.
+An explicit environment variable remains supported for advanced/non-standard
+installations, but it is no longer the normal first-step interface.
 
 ## 5. Validate before running
 
@@ -115,25 +129,30 @@ Run:
 mpas-bmatrix doctor
 ```
 
-The command checks the resolved configuration and concrete files, including:
+The command checks concrete resources, including:
 
 ```text
-MPAS-JEDI installation
+MPAS-JEDI installation prefix
 mpasjedi_error_covariance_toolbox.x
 mpasjedi_variational.x
 mpasjedi_unbalance_ensemble.x
+MPAS core_atmosphere share directory
 x1.10242.grid.nc
 x1.10242.graph.info
 x1.10242.graph.info.part.128
 x1.10242.invariant.nc
-static files directory
+namelist.atmosphere_240km
+streams.atmosphere_240km
+stream_list.atmosphere.analysis
+stream_list.atmosphere.background
+stream_list.atmosphere.ensemble
 geovars.yaml
 keptvars.yaml
+MPAS physics tables
 spack-stack root
 ```
 
-A missing path is reported as a missing resource rather than as an unexplained
-`${VARIABLE}` substitution error.
+A missing item is reported by name, path and role.
 
 Do not start a PBS sequence until `doctor` ends with:
 
@@ -147,7 +166,7 @@ READY
 mpas-bmatrix paths
 ```
 
-This prints the resolved path plus the role of each resource.
+This prints each resolved path and explains its role.
 
 It also reports how each root was obtained, for example:
 
@@ -182,29 +201,44 @@ mpas-bmatrix check-config --json
 
 The JSON form is intended for debugging, audit and reproducibility records.
 
-## 8. Where outputs appear
+## 8. Where products appear
 
-The stage paths are deterministic below the configured work root. The current
-BFLOW convention starts at:
+For a BFLOW range, the first workspace is deterministic:
 
 ```text
 <WORK_ROOT>/bmatrix/bflow_preprocessing/np<NPROC>_<START>_<END>/
 ```
 
-Downstream stages derive their own deterministic workspaces from this run.
-Use the existing `products` command for reusable B-matrix products and the stage
-product guide for the meaning and acceptance criteria of each file:
+Covariance stages then use the same run name below:
 
-```bash
-mpas-bmatrix products ...
+```text
+<WORK_ROOT>/bmatrix/covariance/vbal/<RUN>/
+<WORK_ROOT>/bmatrix/covariance/unbalance/<RUN>/
+<WORK_ROOT>/bmatrix/covariance/hdiag/<RUN>/
+<WORK_ROOT>/bmatrix/covariance/nicas/<RUN>/
+<WORK_ROOT>/bmatrix/covariance/so/<RUN>/
+<WORK_ROOT>/bmatrix/covariance/dirac/<RUN>/
 ```
 
-See [`stage-products.md`](stage-products.md).
+Plots are written below:
+
+```text
+<WORK_ROOT>/bmatrix/plots/<RUN>/
+```
+
+The exact scientific products inside each stage are documented in
+[`stage-products.md`](stage-products.md).
+
+For reusable B-matrix products associated with an existing BFLOW workspace:
+
+```bash
+mpas-bmatrix products --bflow-workspace /path/to/BFLOW_WORKSPACE
+```
 
 ## 9. Advanced overrides
 
-The automatic resolver is not a lock-in. Advanced users may still override a
-non-standard installation with environment variables such as:
+The automatic resolver is not a lock-in. Advanced users may override a
+non-standard installation with:
 
 ```text
 WORK_ROOT
@@ -213,13 +247,11 @@ MPAS_MESH_ROOT
 MPAS_JEDI_STATIC_ROOT
 MONAN_JEDI_SOURCE
 STACK_ROOT
+BMATRIX_ROOT        (rare; normally derived automatically)
 ```
 
-`BMATRIX_ROOT` is normally derived from the installed/checked-out package and
-should not need to be set.
-
 The separate `MONAN_JEDI_UNBALANCE_EXE` variable is no longer needed for the
-standard JACI installation: the executable is derived as:
+standard JACI installation. The executable is derived as:
 
 ```text
 <MONAN_JEDI_INSTALL>/bin/mpasjedi_unbalance_ensemble.x
