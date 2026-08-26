@@ -149,10 +149,10 @@ def _work_root(
     workspace: str | Path | None,
 ) -> ResolvedPath:
     description = "Raiz persistente dos workspaces e produtos gerados pelo usuário."
-    if os.environ.get("WORK_ROOT"):
-        return ResolvedPath("WORK_ROOT", os.environ["WORK_ROOT"], "environment", description)
     if workspace is not None:
         return ResolvedPath("WORK_ROOT", str(Path(workspace).expanduser()), "argument", description)
+    if os.environ.get("WORK_ROOT"):
+        return ResolvedPath("WORK_ROOT", os.environ["WORK_ROOT"], "environment", description)
     if saved.get("workspace"):
         return ResolvedPath("WORK_ROOT", saved["workspace"], "user-config", description)
     return ResolvedPath("WORK_ROOT", str(default_workspace(site)), "site-default", description)
