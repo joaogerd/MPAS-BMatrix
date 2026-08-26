@@ -9,22 +9,16 @@
 # It is a BASE file: users normally pass configs/jaci-x1.10242.yaml to the CLI,
 # and that case file includes this one automatically.
 #
-# How to modify it
-# ----------------
-# - Keep only machine/site/build settings here.
-# - Do not add BUMP/VBAL/HDIAG/NICAS scientific parameters here.
-# - Do not add GFS, WPS, MPAS initialization or forecast settings; those belong
-#   to the upstream mpaswf repository.
-# - Prefer environment variables to committed user-specific absolute paths.
+# User-facing behavior
+# --------------------
+# The public `mpas-bmatrix` CLI resolves the roots below before composing this
+# YAML. Explicit environment variables remain supported as advanced overrides,
+# but normal users should start with `mpas-bmatrix setup --site jaci` followed
+# by `mpas-bmatrix doctor` instead of exporting every path manually.
 #
-# Required shell variables before running on JACI
-# ------------------------------------------------
-#   BMATRIX_ROOT              Absolute path to the MPAS-BMatrix checkout.
-#   WORK_ROOT                 Absolute root for generated workflow workspaces.
-#   MONAN_JEDI_INSTALL        MPAS-JEDI/MONAN-JEDI installation prefix.
-#   MONAN_JEDI_UNBALANCE_EXE  Full path to mpasjedi_unbalance_ensemble.x when
-#                             it is not installed under MONAN_JEDI_INSTALL/bin.
-#   STACK_ROOT                Root of the spack-stack checkout/environment.
+# Keep only machine/site/build settings here. Scientific BUMP/VBAL/HDIAG/NICAS
+# parameters belong in the stage-specific scientific configuration fragments.
+# GFS, WPS, MPAS initialization and forecast generation belong to mpaswf.
 #
 # PBS note
 # --------
@@ -36,52 +30,40 @@
 
 project:
   # Human-readable project identifier used in resolved configuration/provenance.
-  # It does not control product names or scientific behavior.
   name: MPAS-BMatrix
 
-  # Absolute repository checkout. PBS scripts use this root to source the
-  # repository-local environment.loader path.
+  # Resolved automatically by the CLI from the installed/checked-out package.
   project_root: ${BMATRIX_ROOT}
 
-  # Absolute root for all generated BFLOW and covariance-stage workspaces.
-  # Changing it moves future outputs; it does not migrate existing workspaces.
+  # User workspace. `setup` provides a JACI default and allows one override.
   work_root: ${WORK_ROOT}
 
 environment:
   # Path to the shell environment loader, relative to project.project_root.
-  # The file is sourced inside every generated PBS job.
   loader: scripts/load_jaci_env.sh
 
-  # Variables that must exist inside the PBS job before environment.loader is
-  # sourced. Add another scalar key here only when the loader requires it.
-  # Do not depend on qsub inheriting arbitrary login-shell exports.
+  # Values needed by the loader inside PBS jobs. STACK_ROOT is resolved by the
+  # JACI site discovery or may be explicitly overridden by an advanced user.
   variables:
-    # Root of spack-stack used by scripts/load_jaci_env.sh to find the JACI
-    # site setup and jedi-mpas-env module tree.
     STACK_ROOT: ${STACK_ROOT}
 
 install:
-  # Installation prefix containing MPAS-JEDI/SABER executables under bin/.
-  # Required executables include mpasjedi_error_covariance_toolbox.x and
-  # mpasjedi_variational.x.
+  # Installation prefix containing MPAS-JEDI/SABER executables under bin/ and
+  # MPAS runtime files under share/. The CLI first honors an explicit override,
+  # then attempts command/site discovery.
   root: ${MONAN_JEDI_INSTALL}
 
-  # Directory containing MPAS core_atmosphere tables/files copied or linked into
-  # stage workspaces. Usually derived from install.root as shown below.
+  # MPAS core_atmosphere tables/files copied or linked into stage workspaces.
   atmosphere_share: ${MONAN_JEDI_INSTALL}/share/MPAS/core_atmosphere
 
-  # Full path to the executable that applies K2^-1 during UNBALANCE.
-  # Export MONAN_JEDI_UNBALANCE_EXE when this executable comes from a separate
-  # build; otherwise set it to ${MONAN_JEDI_INSTALL}/bin/... in your shell.
-  unbalance_executable: ${MONAN_JEDI_UNBALANCE_EXE}
+  # Conventional installation location. No separate user variable is required.
+  unbalance_executable: ${MONAN_JEDI_INSTALL}/bin/mpasjedi_unbalance_ensemble.x
 
 pbs:
   queues:
     # PBS queue used by VBAL, UNBALANCE, HDIAG, NICAS, SO and DIRAC jobs.
-    # Change only if the JACI allocation policy or expected job size changes.
     bmatrix: pesqmidi
 
   walltime:
-    # Wall-clock request shared by B-matrix PBS jobs. Stage-specific walltimes
-    # may be introduced later if operational evidence justifies them.
+    # Wall-clock request shared by B-matrix PBS jobs.
     bmatrix: "02:00:00"
