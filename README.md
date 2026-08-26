@@ -46,55 +46,68 @@ B ≈ C2A · VBAL · StdDev · NICAS · StdDev · VBALᵀ · C2Aᵀ
 balance transform, UNBALANCE writes the unbalanced training members, and HDIAG
 uses those members for the statistics.
 
-## Quick start
+## Quick start on JACI
 
-Use a project area and a separate work area:
+Clone and install MPAS-BMatrix:
 
 ```bash
-export PROJECT_ROOT=/path/to/projects
-export WORK_ROOT=/path/to/work/MPAS-BMatrix
-
-mkdir -p "$PROJECT_ROOT" "$WORK_ROOT"
-cd "$PROJECT_ROOT"
-
 git clone https://github.com/joaogerd/MPAS-BMatrix.git
-git clone https://github.com/joaogerd/mpaswf.git
-
-export BMATRIX_ROOT="$PROJECT_ROOT/MPAS-BMatrix"
-export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
+cd MPAS-BMatrix
+python -m pip install -e .
 ```
 
-Install both repositories in the active Python environment:
+Create the minimal user setup:
 
 ```bash
-python -m pip install --no-deps -e "$MPASWF_ROOT"
-python -m pip install -e "$BMATRIX_ROOT"
+mpas-bmatrix setup --site jaci
 ```
 
-Configure the paths used by the default JACI x1.10242 case:
+The default workspace is:
+
+```text
+/p/projetos/monan_das/<USER>/work/MPAS-BMatrix
+```
+
+Use another persistent work area only when needed:
 
 ```bash
-export MONAN_JEDI_SOURCE=/path/to/projects/MONAN-JEDI
-export MONAN_JEDI_INSTALL=/path/to/install/monan-jedi-mpas
-export MONAN_JEDI_UNBALANCE_EXE=/path/to/mpasjedi_unbalance_ensemble.x
-
-export MPAS_MESH_ROOT=/path/to/mpas_meshes
-export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
-
-export STACK_ROOT=/path/to/spack-stack
+mpas-bmatrix setup --site jaci --workspace /path/to/work/MPAS-BMatrix
 ```
 
-Load the MPAS-JEDI runtime and inspect the fully composed configuration:
+Validate software, mesh, static inputs and MPI partition before submitting jobs:
 
 ```bash
-cd "$BMATRIX_ROOT"
-source scripts/load_jaci_env.sh
-
-CONFIG=configs/jaci-x1.10242.yaml
-mpas-bmatrix check-config --config "$CONFIG"
+mpas-bmatrix doctor
 ```
 
-The default configuration is composed from:
+Inspect exactly which paths were selected and what each one represents:
+
+```bash
+mpas-bmatrix paths
+```
+
+Inspect the composed configuration:
+
+```bash
+mpas-bmatrix check-config
+```
+
+For the complete machine-readable configuration:
+
+```bash
+mpas-bmatrix check-config --json
+```
+
+The normal JACI onboarding does **not** require the user to start by declaring a
+list of opaque `/path/to/...` variables. Explicit environment variables remain
+available as advanced overrides for non-standard installations.
+
+Read [`docs/getting-started.md`](docs/getting-started.md) for the first-run model,
+resource meanings, discovery order and expected workspace layout.
+
+## Configuration model
+
+The default x1.10242 configuration is internally composed from:
 
 ```text
 configs/jaci.yaml
@@ -110,17 +123,17 @@ configs/bmatrix/x1.10242/*.yaml
   one documented scientific fragment per stage
 ```
 
-Read [`docs/configuration.md`](docs/configuration.md) before changing paths or
-scientific parameters.
+This hierarchy remains important for developers and scientific audit, but normal
+users should not need to edit these files for a standard JACI run.
 
-Run from an existing BFLOW workspace:
+## Running the B-matrix workflow
+
+From an existing BFLOW workspace:
 
 ```bash
-BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
-
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --bflow-workspace "$BFLOW" \
+mpas-bmatrix build \
+  --config configs/jaci-x1.10242.yaml \
+  --bflow-workspace /path/to/BFLOW_WORKSPACE \
   --from-stage vbal \
   --to-stage plots \
   --plot-level 30 \
@@ -129,14 +142,12 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --poll-seconds 30
 ```
 
-Run from a `mpaswf` forecast-pair manifest:
+From an `mpaswf` forecast-pair manifest:
 
 ```bash
-MANIFEST=/path/to/mpaswf-work/products/mpas-forecast-manifest.tsv
-
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
-  --config "$CONFIG" \
-  --manifest "$MANIFEST" \
+mpas-bmatrix build \
+  --config configs/jaci-x1.10242.yaml \
+  --manifest /path/to/mpas-forecast-manifest.tsv \
   --from-stage bflow \
   --to-stage plots \
   --plot-level 30 \
@@ -145,15 +156,19 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --poll-seconds 30
 ```
 
+Use `--dry-run` to inspect the planned stage range and deterministic workspaces
+without creating files or submitting PBS jobs.
+
 ## Documentation map
 
 ### User/operator documentation
 
 | Document | Purpose |
 | --- | --- |
+| [`docs/getting-started.md`](docs/getting-started.md) | Recommended first run on JACI; setup, discovery, doctor and path meanings. |
 | [`docs/end-to-end-tutorial.md`](docs/end-to-end-tutorial.md) | Full colleague smoke-test procedure. |
 | [`docs/user-guide.md`](docs/user-guide.md) | Main execution guide: how to run, what to provide and how to validate. |
-| [`docs/configuration.md`](docs/configuration.md) | Configuration hierarchy, environment variables, include rules and rebuild boundaries. |
+| [`docs/configuration.md`](docs/configuration.md) | Configuration hierarchy, overrides, include rules and rebuild boundaries. |
 | [`docs/jaci-quickstart.md`](docs/jaci-quickstart.md) | Compact JACI command sequence. |
 | [`docs/stage-products.md`](docs/stage-products.md) | Inputs, outputs and acceptance criteria for every stage. |
 | [`docs/mpaswf-pairs.md`](docs/mpaswf-pairs.md) | How to generate f024/f048 NMC forecast pairs with `mpaswf`. |
@@ -165,8 +180,8 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
 | --- | --- |
 | [`docs/bmatrix-theory.md`](docs/bmatrix-theory.md) | Scientific theory and meaning of each stage. |
 | [`docs/scientific-contract.md`](docs/scientific-contract.md) | Variable names, aliases, SABER/BUMP blocks and invariants. |
-| [`docs/configuration-audit.md`](docs/configuration-audit.md) | Audit of the original three configuration files. |
-| [`docs/configuration-reorganization.md`](docs/configuration-reorganization.md) | Configuration corrections and final ownership model. |
+| [`docs/configuration-audit.md`](docs/configuration-audit.md) | Audit of the original configuration files. |
+| [`docs/configuration-reorganization.md`](docs/configuration-reorganization.md) | Configuration corrections and ownership model. |
 | [`docs/developer-guide.md`](docs/developer-guide.md) | Developer workflow, extension rules and maintenance expectations. |
 | [`docs/architecture.md`](docs/architecture.md) | Internal module architecture and stage lifecycle. |
 | [`docs/testing.md`](docs/testing.md) | Unit, integration and JACI smoke testing guidance. |
@@ -175,11 +190,14 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
 
 ## Development checks
 
+Developer workflows may use the module entry point and explicit `PYTHONPATH`.
+Normal user documentation should use only the installed `mpas-bmatrix` command.
+
 ```bash
-cd "$BMATRIX_ROOT"
+cd /path/to/MPAS-BMatrix
 mkdir -p .pytest-tmp
 
-TMPDIR="$BMATRIX_ROOT/.pytest-tmp" \
+TMPDIR="$PWD/.pytest-tmp" \
 PYTHONPATH="src:${PYTHONPATH:-}" \
 python -m pytest -p no:cacheprovider -q
 
