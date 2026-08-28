@@ -2,90 +2,36 @@
 # MPAS-BMatrix — runnable JACI case for the global MPAS x1.10242 mesh
 # =============================================================================
 #
-# Purpose
-# -------
-# This is the DEFAULT configuration passed to the public CLI:
+# This composes:
+#   1. configs/jaci.yaml              JACI/runtime settings;
+#   2. this file                      x1.10242 mesh/static inputs;
+#   3. configs/bmatrix-x1.10242.yaml  scientific B-matrix contract.
 #
-#   mpas-bmatrix ... --config configs/jaci-x1.10242.yaml
-#
-# It composes three layers:
-#   1. configs/jaci.yaml                 JACI site/runtime settings;
-#   2. this file                         x1.10242 mesh and static inputs;
-#   3. configs/bmatrix-x1.10242.yaml     scientific B-matrix contract.
-#
-# How to modify it
-# ----------------
-# - Change mesh/static paths, MPI size or mesh-dependent runtime values here.
-# - Change JACI queues, installation roots or the environment loader in
-#   configs/jaci.yaml.
-# - Change scientific calibration parameters in the stage files included by
-#   configs/bmatrix-x1.10242.yaml.
-# - Do not add WPS, GFS or MPAS forecast-generation settings here; mpaswf owns
-#   those upstream tasks and provides the forecast-pair manifest consumed by
-#   BFLOW.
-#
-# Required shell variables
-# ------------------------
-# Variables required by the included JACI base:
-#   BMATRIX_ROOT, WORK_ROOT, MONAN_JEDI_INSTALL,
-#   MONAN_JEDI_UNBALANCE_EXE
-#
-# Variables used by this x1.10242 case:
-#   MPAS_MESH_ROOT        Root containing quasi_uniform/x1.10242_240km.
-#   MPAS_JEDI_STATIC_ROOT Directory containing the validated tutorial namelist,
-#                         streams, stream lists and x1.10242.invariant.nc.
-#   MONAN_JEDI_SOURCE     MONAN-JEDI source checkout containing geovars.yaml and
-#                         keptvars.yaml.
+# MONAN-JEDI source trees are deliberately not part of this runtime contract.
+# geovars.yaml and keptvars.yaml are installed by MONAN-JEDI below
+# <install.root>/share/monan-jedi/mpas-jedi/namelists/.
 # =============================================================================
 
-# Merge the JACI site/runtime base before applying the case settings below.
-# Relative include paths are resolved from the directory containing this file.
 include: jaci.yaml
 
 mesh:
-  # MPAS mesh identifier used in workspace names and invariant/template links.
   name: x1.10242
-
-  # MPAS mesh NetCDF used by BFLOW/ESMF and geometry validation.
   grid: ${MPAS_MESH_ROOT}/quasi_uniform/x1.10242_240km/mesh/x1.10242.grid.nc
-
-  # METIS graph file required by MPAS-JEDI geometry setup.
   graph: ${MPAS_MESH_ROOT}/quasi_uniform/x1.10242_240km/graph/x1.10242.graph.info
-
-  # Directory containing precomputed graph partitions named
-  # <graph-file>.part.<nproc>.
   partitions_dir: ${MPAS_MESH_ROOT}/quasi_uniform/x1.10242_240km/partitions
-
-  # MPI ranks used by all covariance jobs and encoded in deterministic workspace
-  # names. A matching graph partition must exist for this value.
   nproc: 128
-
-  # Number of full model vertical levels. NICAS uses it to convert the configured
-  # level-from-top diagnostic location into a one-based model level.
   nvertlevels: 55
 
 static:
-  # MPAS invariant state for the x1.10242 mesh.
   invariant: ${MPAS_JEDI_STATIC_ROOT}/x1.10242.invariant.nc
-
-  # Directory containing the validated namelist.atmosphere_240km,
-  # streams.atmosphere_240km and stream_list.atmosphere.* files. These files must
-  # remain compatible with the installed MPAS Registry and physics tables.
   tutorial_physics_files: ${MPAS_JEDI_STATIC_ROOT}
 
-  # MPAS-JEDI GeoVaLs variable-definition YAML linked into stage workspaces.
-  geovars: ${MONAN_JEDI_SOURCE}/mpas-jedi/test/testinput/namelists/geovars.yaml
-
-  # MPAS-JEDI kept-variable YAML linked into stage workspaces.
-  keptvars: ${MONAN_JEDI_SOURCE}/mpas-jedi/test/testinput/namelists/keptvars.yaml
+  # Public runtime support installed by MONAN-JEDI.
+  geovars: ${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/mpas-jedi/namelists/geovars.yaml
+  keptvars: ${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/mpas-jedi/namelists/keptvars.yaml
 
 bmatrix:
-  # Scientific-contract aggregator, resolved relative to this file. It includes
-  # one documented fragment per pipeline stage.
   configuration: bmatrix-x1.10242.yaml
 
 runtime:
-  # MPAS time step in seconds used only when BFLOW discovers forecast files from
-  # --start-valid-time/--end-valid-time instead of reading an explicit manifest.
-  # It must match the upstream mpaswf forecast directory naming convention.
   config_dt: 60
