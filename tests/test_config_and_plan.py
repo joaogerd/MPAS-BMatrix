@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from bmatrix.config import deep_merge, load_config
+from bmatrix.config import deep_merge, expand_env, load_config
 from bmatrix.errors import ConfigurationError
 from bmatrix.pipeline import BuildRequest, plan
 
@@ -134,6 +134,12 @@ def test_load_config_rejects_unresolved_environment_variables(tmp_path: Path) ->
         load_config(config_path)
 
 
+def test_legacy_install_variable_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MONAN_JEDI_INSTALL_ROOT", raising=False)
+    monkeypatch.setenv("MONAN_JEDI_INSTALL", "/legacy/install")
+    assert expand_env("${MONAN_JEDI_INSTALL_ROOT}/bin/tool.x") == "/legacy/install/bin/tool.x"
+
+
 def test_repository_default_config_composes_all_scientific_stages(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -141,15 +147,13 @@ def test_repository_default_config_composes_all_scientific_stages(
     variables = {
         "BMATRIX_ROOT": str(root),
         "WORK_ROOT": str(tmp_path / "work"),
-        "MONAN_JEDI_INSTALL": str(tmp_path / "install"),
-        "MONAN_JEDI_UNBALANCE_EXE": str(tmp_path / "unbalance.x"),
+        "MONAN_JEDI_INSTALL_ROOT": str(tmp_path / "install"),
         "MPAS_MESH_ROOT": str(tmp_path / "meshes"),
         "MPAS_JEDI_STATIC_ROOT": str(tmp_path / "static"),
-        "MONAN_JEDI_SOURCE": str(tmp_path / "MONAN-JEDI"),
         "STACK_ROOT": str(tmp_path / "spack-stack"),
     }
-    for name, value in variables.items():
-        monkeypatch.setenv(name, value)
+    for name, item in variables.items():
+        monkeypatch.setenv(name, item)
 
     config = load_config(root / "configs" / "jaci-x1.10242.yaml")
 
@@ -168,7 +172,18 @@ def test_repository_default_config_composes_all_scientific_stages(
     ):
         assert section in config
     assert "wps" not in config
-    assert config["install"]["unbalance_executable"] == variables["MONAN_JEDI_UNBALANCE_EXE"]
+    assert config["install"]["root"] == variables["MONAN_JEDI_INSTALL_ROOT"]
+    assert config["install"]["atmosphere_share"] == str(
+        Path(variables["MONAN_JEDI_INSTALL_ROOT"]) / "share/MPAS/core_atmosphere"
+    )
+    assert config["static"]["geovars"] == str(
+        Path(variables["MONAN_JEDI_INSTALL_ROOT"])
+        / "share/monan-jedi/mpas-jedi/namelists/geovars.yaml"
+    )
+    assert config["static"]["keptvars"] == str(
+        Path(variables["MONAN_JEDI_INSTALL_ROOT"])
+        / "share/monan-jedi/mpas-jedi/namelists/keptvars.yaml"
+    )
     assert config["environment"]["variables"]["STACK_ROOT"] == variables["STACK_ROOT"]
 
 
