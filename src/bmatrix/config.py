@@ -11,10 +11,6 @@ a list of relative paths. Included documents are merged in declaration order and
 the including document overrides them. Mappings are merged recursively; lists
 remain atomic so scientifically ordered sequences are never concatenated by
 accident.
-
-The runnable platform/case document points to the scientific contract through
-``bmatrix.configuration``. The fully composed platform and scientific mappings
-are then deep-merged into the configuration consumed by all stages.
 """
 from __future__ import annotations
 
@@ -49,12 +45,7 @@ def _load_yaml(path: Path) -> Config:
 
 
 def deep_merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> Config:
-    """Merge mappings recursively without merging list values implicitly.
-
-    Lists are atomic: an override must intentionally replace a list of controls,
-    variables or driver settings. This prevents accidental concatenation of
-    scientifically meaningful sequences.
-    """
+    """Merge mappings recursively without merging list values implicitly."""
     result: Config = deepcopy(dict(base))
     for key, value in override.items():
         old = result.get(key)
@@ -65,6 +56,21 @@ def deep_merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> Config:
     return result
 
 
+def _expand_runtime_alias(value: str) -> str:
+    """Expand the legacy MONAN_JEDI_INSTALL name as a compatibility fallback.
+
+    The public variable shared with MONAN-JEDI and mpaswf is now
+    ``MONAN_JEDI_INSTALL_ROOT``. Existing user scripts that export only
+    ``MONAN_JEDI_INSTALL`` remain valid during the transition.
+    """
+    if "MONAN_JEDI_INSTALL_ROOT" in os.environ:
+        return value
+    legacy = os.environ.get("MONAN_JEDI_INSTALL")
+    if legacy is None:
+        return value
+    return value.replace("${MONAN_JEDI_INSTALL_ROOT}", legacy).replace("$MONAN_JEDI_INSTALL_ROOT", legacy)
+
+
 def expand_env(value: Any) -> Any:
     """Expand environment variables recursively in a decoded YAML value."""
     if isinstance(value, Mapping):
@@ -72,7 +78,7 @@ def expand_env(value: Any) -> Any:
     if isinstance(value, list):
         return [expand_env(item) for item in value]
     if isinstance(value, str):
-        return os.path.expandvars(value)
+        return os.path.expandvars(_expand_runtime_alias(value))
     return value
 
 
@@ -159,14 +165,7 @@ def _load_composed_yaml(path: Path, stack: tuple[Path, ...] = ()) -> tuple[Confi
 
 
 def _contract_declaring_path(platform_path: Path, sources: Sequence[Path]) -> Path:
-    """Return the source YAML that declared the effective contract path.
-
-    Relative ``bmatrix.configuration`` paths belong to the YAML document that
-    declared them, not necessarily to the top-level overlay passed to
-    :func:`load_config`. Sources are inspected in reverse merge order so an
-    explicit overlay declaration wins while an inherited declaration keeps the
-    directory of its original case file.
-    """
+    """Return the source YAML that declared the effective contract path."""
     for source in reversed(tuple(sources)):
         document = _load_yaml(source)
         bmatrix = document.get("bmatrix")
@@ -198,22 +197,7 @@ def _contract_path(declaring_path: Path, platform: Mapping[str, Any]) -> Path | 
 
 
 def load_config(path: str | Path) -> Config:
-    """Load the composed platform/case configuration and scientific contract.
-
-    Parameters
-    ----------
-    path
-        Runnable platform/case YAML. It may include a site base and its optional
-        ``bmatrix.configuration`` field identifies the scientific-contract
-        aggregator. The aggregator may include stage-specific fragments.
-
-    Returns
-    -------
-    dict[str, object]
-        Fully merged configuration. ``configuration_sources`` and
-        ``bmatrix_contract_sources`` record every composed YAML source, while
-        ``bmatrix_contract`` retains the merged scientific mapping.
-    """
+    """Load the composed platform/case configuration and scientific contract."""
     platform_path = Path(path).expanduser().resolve()
     platform_raw, platform_sources = _load_composed_yaml(platform_path)
     platform = expand_env(platform_raw)
@@ -238,12 +222,7 @@ def load_config(path: str | Path) -> Config:
 
 
 def validate_config_shape(config: Mapping[str, Any]) -> None:
-    """Perform lightweight validation shared by all workflow stages.
-
-    Detailed stage validation is intentionally deferred until a stage is
-    selected. A BFLOW-only run therefore does not need a configured SABER
-    executable, while a VBAL run does.
-    """
+    """Perform lightweight validation shared by all workflow stages."""
     required_maps = ("project", "mesh", "runtime", "bflow")
     missing = [name for name in required_maps if not isinstance(config.get(name), Mapping)]
     if missing:
