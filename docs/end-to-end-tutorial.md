@@ -63,19 +63,25 @@ Use the `main` branch unless a specific test branch was explicitly requested.
 
 ## 4. Declare the JACI x1.10242 paths
 
-The committed YAML files are generic and obtain account/site paths from
-environment variables.
+The committed YAML files use one canonical MONAN-JEDI runtime prefix plus
+separate mesh/case data paths:
 
 ```bash
-export MONAN_JEDI_SOURCE=/path/to/projects/MONAN-JEDI
-export MONAN_JEDI_INSTALL=/path/to/install/monan-jedi-mpas
-export MONAN_JEDI_UNBALANCE_EXE=/path/to/mpasjedi_unbalance_ensemble.x
+export MONAN_JEDI_INSTALL_ROOT=/p/projetos/monan_das/$USER/build/monan-jedi
 
 export MPAS_MESH_ROOT=/path/to/mpas_meshes
 export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
 
 export STACK_ROOT=/path/to/spack-stack
 ```
+
+The B-matrix workflow derives JEDI/SABER executables from
+`${MONAN_JEDI_INSTALL_ROOT}/bin`, MPAS runtime tables from
+`${MONAN_JEDI_INSTALL_ROOT}/share/MPAS/core_atmosphere`, and MPAS-JEDI runtime
+YAMLs from `${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/mpas-jedi/namelists`.
+The MONAN-JEDI source checkout and a separately configured unbalance executable
+are not required. `MONAN_JEDI_INSTALL` remains accepted only as a legacy alias
+when `MONAN_JEDI_INSTALL_ROOT` is not set.
 
 The configured static directory must contain compatible files such as:
 

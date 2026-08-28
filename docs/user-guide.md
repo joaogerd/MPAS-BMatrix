@@ -58,19 +58,26 @@ python -m pip install -e ".[weights,bflow,diagnostics]"
 
 ## 3. Configure the JACI x1.10242 case
 
-The default runnable case uses environment variables rather than committed
-personal paths:
+The default runnable case uses one MONAN-JEDI runtime installation root plus
+separate mesh/case data paths:
 
 ```bash
-export MONAN_JEDI_SOURCE=/path/to/projects/MONAN-JEDI
-export MONAN_JEDI_INSTALL=/path/to/install/monan-jedi-mpas
-export MONAN_JEDI_UNBALANCE_EXE=/path/to/mpasjedi_unbalance_ensemble.x
+export MONAN_JEDI_INSTALL_ROOT=/p/projetos/monan_das/$USER/build/monan-jedi
 
 export MPAS_MESH_ROOT=/path/to/mpas_meshes
 export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
 
 export STACK_ROOT=/path/to/spack-stack
 ```
+
+From `MONAN_JEDI_INSTALL_ROOT`, MPAS-BMatrix derives the required JEDI/SABER
+executables from `bin/`, MPAS runtime tables from `share/MPAS/core_atmosphere`,
+and `geovars.yaml` / `keptvars.yaml` from
+`share/monan-jedi/mpas-jedi/namelists/`. A MONAN-JEDI source checkout and a
+separate `MONAN_JEDI_UNBALANCE_EXE` are not required for normal use.
+
+For backward compatibility, `MONAN_JEDI_INSTALL` is still accepted when the
+canonical `MONAN_JEDI_INSTALL_ROOT` variable is not set.
 
 `MPAS_JEDI_STATIC_ROOT` must contain the compatible x1.10242 invariant,
 namelist, streams and stream-list files. These files must match the installed
