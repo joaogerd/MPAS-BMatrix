@@ -1,22 +1,21 @@
 # Configuration guide
 
-MPAS-BMatrix uses a composed YAML hierarchy so machine settings, mesh/case
-settings and stage-specific scientific parameters can be reviewed independently.
+MPAS-BMatrix composes machine/runtime, mesh/case, and scientific-stage YAMLs.
 
-## 1. Public entry point and file hierarchy
+## Configuration hierarchy
 
 ```text
 configs/jaci.yaml
-  JACI site/build base; included, not normally passed directly to the CLI
+  JACI runtime base
 
 configs/jaci-x1.10242.yaml
-  runnable x1.10242 case; includes jaci.yaml
+  runnable mesh/case; includes jaci.yaml
 
 configs/bmatrix-x1.10242.yaml
-  scientific-contract aggregator referenced by the case
+  scientific-contract aggregator
 
 configs/bmatrix/x1.10242/*.yaml
-  controls plus one scientific fragment per BFLOW-through-DIRAC stage
+  controls and stage-specific scientific fragments
 ```
 
 Users normally pass only:
@@ -25,25 +24,65 @@ Users normally pass only:
 mpas-bmatrix check-config --config configs/jaci-x1.10242.yaml
 ```
 
-## 2. Required environment variables
+## Required environment variables
 
-Export these paths before checking or running the x1.10242 case:
+For the standard x1.10242 JACI case:
 
 ```bash
 export BMATRIX_ROOT=/path/to/projects/MPAS-BMatrix
 export WORK_ROOT=/path/to/work/MPAS-BMatrix
 
-export MONAN_JEDI_SOURCE=/path/to/projects/MONAN-JEDI
-export MONAN_JEDI_INSTALL=/path/to/install/monan-jedi-mpas
-export MONAN_JEDI_UNBALANCE_EXE=/path/to/mpasjedi_unbalance_ensemble.x
+export MONAN_JEDI_INSTALL_ROOT=/p/projetos/monan_das/$USER/build/monan-jedi
 
 export MPAS_MESH_ROOT=/path/to/mpas_meshes
 export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
-
 export STACK_ROOT=/path/to/spack-stack
 ```
 
-`MPAS_JEDI_STATIC_ROOT` must contain at least:
+The normal runtime configuration does not need:
+
+```text
+MONAN_JEDI_SOURCE
+MONAN_JEDI_UNBALANCE_EXE
+```
+
+The historical `MONAN_JEDI_INSTALL` variable is accepted as a compatibility
+alias if `MONAN_JEDI_INSTALL_ROOT` is not defined.
+
+## MONAN-JEDI runtime ownership
+
+`configs/jaci.yaml` defines one install root:
+
+```yaml
+install:
+  root: ${MONAN_JEDI_INSTALL_ROOT}
+  atmosphere_share: ${MONAN_JEDI_INSTALL_ROOT}/share/MPAS/core_atmosphere
+```
+
+Executables are derived conventionally from `install.root/bin`, including:
+
+```text
+mpasjedi_error_covariance_toolbox.x
+mpasjedi_variational.x
+mpasjedi_unbalance_ensemble.x
+```
+
+The x1.10242 case consumes MPAS-JEDI runtime YAMLs installed by MONAN-JEDI:
+
+```yaml
+static:
+  geovars: ${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/mpas-jedi/namelists/geovars.yaml
+  keptvars: ${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/mpas-jedi/namelists/keptvars.yaml
+```
+
+Consumers must not depend on the MONAN-JEDI source checkout or private work/build
+trees.
+
+## Case/static inputs
+
+`MPAS_JEDI_STATIC_ROOT` remains separate from the compiled installation because
+it describes the validated scientific case. It should contain the required
+invariant and reference atmosphere files, for example:
 
 ```text
 x1.10242.invariant.nc
@@ -52,33 +91,12 @@ streams.atmosphere_240km
 stream_list.atmosphere.*
 ```
 
-The namelist, streams and stream lists must match the installed MPAS Registry
-and physics tables.
+Likewise, mesh and partition files are declared through `MPAS_MESH_ROOT`.
 
-Load the runtime and inspect the resolved configuration:
+## PBS environment
 
-```bash
-cd "$BMATRIX_ROOT"
-source scripts/load_jaci_env.sh
-mpas-bmatrix check-config --config configs/jaci-x1.10242.yaml
-```
-
-The JSON output includes:
-
-```text
-configuration_sources
-bmatrix_contract_path
-bmatrix_contract_sources
-```
-
-A missing environment variable causes `check-config` to fail before any PBS job
-is generated and reports the unresolved YAML key.
-
-### Variables needed inside PBS jobs
-
-Do not assume that arbitrary variables exported in the login shell will be
-inherited by a PBS compute job. Values required before the JACI environment
-loader runs belong under `environment.variables` in `configs/jaci.yaml`:
+Variables needed before `scripts/load_jaci_env.sh` runs inside a PBS job belong
+under `environment.variables`:
 
 ```yaml
 environment:
@@ -87,18 +105,10 @@ environment:
     STACK_ROOT: ${STACK_ROOT}
 ```
 
-The scheduler writes these values explicitly into each generated PBS script
-before sourcing the loader:
+The scheduler writes them explicitly into generated scripts instead of depending
+on arbitrary login-shell inheritance.
 
-```bash
-export STACK_ROOT=/resolved/path/to/spack-stack
-source /resolved/path/to/MPAS-BMatrix/scripts/load_jaci_env.sh
-```
-
-This keeps the bootstrap reproducible without copying the entire interactive
-login environment with `qsub -V`.
-
-## 3. Include semantics
+## Include semantics
 
 A YAML may include one file:
 
@@ -106,7 +116,7 @@ A YAML may include one file:
 include: jaci.yaml
 ```
 
-or several files:
+or several:
 
 ```yaml
 include:
@@ -118,180 +128,74 @@ include:
 Rules:
 
 1. paths are relative to the declaring YAML;
-2. files are merged in listed order;
+2. files merge in declaration order;
 3. the declaring file overrides included mappings;
-4. nested mappings are merged recursively;
-5. lists are replaced as complete units;
+4. nested mappings merge recursively;
+5. lists are atomic and are replaced as complete units;
 6. cyclic includes are rejected;
-7. unresolved environment-variable references are rejected.
+7. unresolved environment references are rejected.
 
-Example:
+## Where a value belongs
 
-```yaml
-# base.yaml
-pbs:
-  queues:
-    bmatrix: pesqmidi
-  walltime:
-    bmatrix: "02:00:00"
-```
-
-```yaml
-# local-case.yaml
-include: base.yaml
-pbs:
-  walltime:
-    bmatrix: "04:00:00"
-```
-
-Resolved result:
-
-```yaml
-pbs:
-  queues:
-    bmatrix: pesqmidi
-  walltime:
-    bmatrix: "04:00:00"
-```
-
-## 4. Where to change a value
-
-| Change | File |
+| Change | Owner |
 | --- | --- |
-| JACI queue, walltime, install roots or environment loader | `configs/jaci.yaml` or its referenced environment variables |
-| Variable required by the PBS environment loader | `configs/jaci.yaml` under `environment.variables` |
-| MPAS mesh path, partition count, vertical levels or static files | `configs/jaci-x1.10242.yaml` |
-| Control-variable names/aliases and 3D/2D grouping | `configs/bmatrix/x1.10242/controls.yaml` |
+| MONAN/MPAS/JEDI executables and installed runtime support | `MONAN_JEDI_INSTALL_ROOT` / MONAN-JEDI |
+| JACI queue, walltime or environment loader | `configs/jaci.yaml` |
+| MPAS mesh, partitions, vertical levels, invariant/reference case | `configs/jaci-x1.10242.yaml` |
 | NMC/BFLOW preprocessing | `configs/bmatrix/x1.10242/bflow.yaml` |
-| Vertical-balance calibration/inverse settings | `configs/bmatrix/x1.10242/vbal.yaml` |
-| K2^-1 BUMP read flags | `configs/bmatrix/x1.10242/unbalance.yaml` |
-| HDIAG statistics | `configs/bmatrix/x1.10242/hdiag.yaml` |
+| Controls and aliases | `configs/bmatrix/x1.10242/controls.yaml` |
+| Vertical-balance calibration | `configs/bmatrix/x1.10242/vbal.yaml` |
+| K2^-1/unbalance scientific read flags | `configs/bmatrix/x1.10242/unbalance.yaml` |
+| HDIAG | `configs/bmatrix/x1.10242/hdiag.yaml` |
 | NICAS | `configs/bmatrix/x1.10242/nicas.yaml` |
 | Single-observation validation | `configs/bmatrix/x1.10242/so.yaml` |
-| Complete-B DIRAC control and paired points | `configs/bmatrix/x1.10242/dirac.yaml` |
+| DIRAC | `configs/bmatrix/x1.10242/dirac.yaml` |
 
-## 5. Stage-specific clarity rules
+## UNBALANCE executable
 
-### Control names
-
-`controls.yaml` distinguishes:
-
-```text
-code        canonical name used internally by JEDI/SABER/OOPS
-file        physical name written in B-matrix NetCDF products
-dimensions  3d or 2d, used by NICAS grid grouping
-```
-
-These aliases do not make canonical names valid MPAS stream fields. MPAS stream
-lists continue to use Registry-native names.
-
-### UNBALANCE
-
-The executable is infrastructure:
+The executable is infrastructure, not a scientific parameter. The normal path is
+resolved automatically as:
 
 ```text
-install.unbalance_executable
+${MONAN_JEDI_INSTALL_ROOT}/bin/mpasjedi_unbalance_ensemble.x
 ```
 
-The scientific fragment contains only the BUMP read contract used to apply the
-calibrated balance:
+The scientific UNBALANCE fragment should therefore describe only the BUMP/K2^-1
+contract.
+
+The implementation still accepts an explicit executable in older custom configs,
+but the standard JACI configuration no longer requires one.
+
+## Rebuild rules
+
+A scientific change invalidates that stage and all downstream stages:
 
 ```text
-read local sampling
-read global sampling
-read vertical balance
-```
-
-### DIRAC
-
-Candidate coordinates are stored as paired mappings:
-
-```yaml
-points:
-  - {latitude: 30.31011691, longitude: 130.11182691}
-  - {latitude: -34.60250161, longitude: -58.39753137}
-```
-
-`index` is one-based and selects one mapping. The renderer converts this form to
-`dirLats`, `dirLons`, `ildir` and `dirvar` for the toolbox. Older contracts with
-parallel `latitudes`/`longitudes` remain readable, but new profiles should use
-`points`.
-
-## 6. Rebuild rules
-
-A configuration change invalidates that stage and all downstream stages:
-
-```text
-controls or BFLOW
-  -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
-
-VBAL
-  -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
-
-UNBALANCE
-  -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
-
-HDIAG
-  -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
-
-NICAS
-  -> NICAS -> SO -> DIRAC -> PLOTS
-
-SO observation/minimizer
-  -> SO
-
-SO analysis variables
-  -> SO -> DIRAC -> PLOTS
-
-DIRAC point/control/background list
-  -> DIRAC -> PLOTS
+BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
 Run from the earliest invalid stage with `--clean`.
 
-## 7. Adding another mesh/case
+## Adding another mesh/case
 
-For a new mesh, create:
+Create a new platform/case YAML and, when needed, a new scientific-fragment tree.
+Do not reuse x1.10242 partition counts, vertical levels, sampling sizes or static
+inputs without checking compatibility.
 
-```text
-configs/jaci-<mesh>.yaml
-configs/bmatrix-<mesh>.yaml
-configs/bmatrix/<mesh>/
+## Local overrides
+
+Prefer environment variables for machine-specific roots. For intentional
+experiments, create an overlay YAML that includes the official case and overrides
+only the required mapping. Remember that lists are atomic.
+
+## Validation
+
+After changing configuration:
+
+```bash
+mpas-bmatrix check-config --config configs/jaci-x1.10242.yaml
 ```
 
-Recommended procedure:
-
-1. copy `jaci-x1.10242.yaml` and replace mesh/static/runtime settings;
-2. reuse scientific fragments only after verifying the same assumptions;
-3. otherwise copy the x1.10242 fragment directory and review every stage;
-4. point `bmatrix.configuration` to the new aggregator;
-5. add a configuration-composition test;
-6. run `check-config`, unit tests and a JACI smoke test.
-
-Do not reuse x1.10242 sampling sizes, vertical levels, partitions or static files
-without checking compatibility with the new mesh.
-
-## 8. Local overrides
-
-Avoid editing committed YAML only to change personal roots; use the documented
-environment variables. For an intentional experiment, create a case file that
-includes the official case and overrides only the required mapping:
-
-```yaml
-# configs/jaci-x1.10242-experiment.yaml
-include: jaci-x1.10242.yaml
-
-pbs:
-  walltime:
-    bmatrix: "04:00:00"
-```
-
-Because lists are atomic, overriding `controls`, `relations`, `points` or
-`background_variables` requires repeating the complete intended list.
-
-## 9. Audit and implementation reports
-
-- [`configuration-audit.md`](configuration-audit.md): how the original three
-  files were actually used and which keys were obsolete.
-- [`configuration-reorganization.md`](configuration-reorganization.md): final
-  ownership, corrections, compatibility behavior and tests.
+The resolved output records `configuration_sources`, `bmatrix_contract_path`, and
+`bmatrix_contract_sources`. Any unresolved `${VARIABLE}` is rejected before a
+PBS job is generated.
