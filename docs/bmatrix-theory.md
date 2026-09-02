@@ -1,10 +1,7 @@
 # B-matrix theory and stage meaning
 
 This document summarizes the scientific meaning of the static MPAS-JEDI/SABER
-B-matrix workflow implemented in this repository. It consolidates the conceptual
-material from the original `mpas-bmatrix-global` documentation and updates the
-stage order to include the explicit `UNBALANCE` stage used by the current
-pipeline.
+B-matrix workflow implemented in this repository.
 
 ## What the B-matrix represents
 
@@ -20,52 +17,41 @@ state. Conceptually, `B` determines:
 - how a control-space increment becomes an analysis-space increment.
 ```
 
-For a global MPAS-JEDI/SABER application, `B` is not built or stored as one dense
-matrix. It is represented by a sequence of operators and NetCDF products:
+For a global MPAS-JEDI/SABER application, `B` is represented by a sequence of
+operators and NetCDF products rather than one dense matrix:
 
 ```text
 B ≈ C2A · VBAL · StdDev · NICAS · StdDev · VBALᵀ · C2Aᵀ
 ```
 
-where:
-
-| Operator | Meaning |
-| --- | --- |
-| `NICAS` | Spatial correlation/localization operator. |
-| `StdDev` | Standard-deviation operator that sets error amplitude. |
-| `VBAL` | Vertical and multivariate balance operator. |
-| `C2A` | `Control2Analysis` linear variable change from control variables to analysis variables. |
-
-The practical product set is therefore a collection of BUMP/SABER files, not one
-single covariance file.
+where `NICAS` represents spatial correlation, `StdDev` sets error amplitude,
+`VBAL` represents vertical/multivariate balance, and `C2A` is the
+`Control2Analysis` variable change.
 
 ## Stage overview
 
-The current operational order is:
+The production order is:
 
 ```text
-mpaswf -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
+mpaswf -> BFLOW -> VBAL -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
-`mpaswf` is upstream and external to this package. It generates MPAS f024/f048
-forecasts and the forecast-pair manifest. This repository starts at `BFLOW`.
+`mpaswf` is upstream and external. This repository starts at `BFLOW`.
 
 | Stage | Scientific role | Main products |
 | --- | --- | --- |
-| `mpaswf` | Generates same-valid-time f024/f048 MPAS forecasts for the NMC method. | `mpas-forecast-manifest.tsv`, MPAS `da_state`/`restart` products. |
-| `BFLOW` | Converts the NMC forecast pairs into control-space full fields and perturbations. | `FULL_f24.nc`, `FULL_f48.nc`, `PTB_f48mf24.nc`, `manifest.tsv`. |
-| `VBAL` | Estimates vertical/multivariate balance relationships. | `mpas_vbal.nc`, `mpas_sampling.nc`, local VBAL/sampling files. |
-| `UNBALANCE` | Applies the inverse balance transform to write unbalanced training members. | `samplesUnbalanced/PTB_f48mf24_*.nc`. |
-| `HDIAG` | Computes standard deviations and horizontal/vertical correlation scales from the unbalanced samples. | `mpas.stddev.nc`, `mpas.cor_rh.nc`, `mpas.cor_rv.nc`. |
-| `NICAS` | Builds the spatial correlation/localization operator using HDIAG scales. | `mpas_nicas.nc`, local NICAS files, `mpas.nicas_norm.nc`, `mpas.dirac_nicas.nc`. |
-| `SO` | Runs a single-observation variational test to validate that the complete B can be read and applied. | `obsout_SO_*.h5`, `an.*.nc`, run logs. |
-| `DIRAC` | Applies an impulse to diagnose the response of the complete B directly. | `mpas.dirac.nc`. |
-| `PLOTS` | Produces visual diagnostics from completed products. | `summary.csv`, diagnostic figures. |
+| `mpaswf` | Generates same-valid-time f024/f048 MPAS forecasts for the NMC method. | forecast-pair manifest and MPAS states. |
+| `BFLOW` | Converts NMC forecast pairs into control-space full fields and perturbations. | `FULL_f24.nc`, `FULL_f48.nc`, `PTB_f48mf24.nc`. |
+| `VBAL` | Estimates vertical/multivariate balance relationships. | `mpas_vbal.nc`, `mpas_sampling.nc`, local products. |
+| `HDIAG` | Applies inverse VBAL in memory and computes standard deviations and horizontal/vertical correlation scales. | `mpas.stddev.nc`, `mpas.cor_rh.nc`, `mpas.cor_rv.nc`. |
+| `NICAS` | Builds the spatial correlation/localization operator using HDIAG scales. | `mpas_nicas.nc`, local products and diagnostics. |
+| `SO` | Runs a single-observation variational test of the complete B. | `obsout_SO_*.h5`, `an.*.nc`, logs. |
+| `DIRAC` | Applies an impulse to diagnose the response of the complete B. | `mpas.dirac.nc`. |
+| `PLOTS` | Produces visual diagnostics from completed products. | `summary.csv`, figures. |
 
 ## Control space and analysis space
 
-The B-matrix is calibrated in control space. In the current contract, the control
-variables are:
+The B-matrix is calibrated in control space:
 
 | Canonical code name | NetCDF/file name | Role |
 | --- | --- | --- |
@@ -75,11 +61,10 @@ variables are:
 | `water_vapor_mixing_ratio_wrt_moist_air` | `spechum` | Moisture control. |
 | `air_pressure_at_surface` | `surface_pressure` | Surface-pressure control. |
 
-SABER/OOPS uses the canonical names internally. The NetCDF products may contain
-historical/tutorial names. The `in code`/`in file` aliases bridge those names for
-JEDI/SABER/BUMP product reads.
+SABER/OOPS uses canonical names internally. Explicit aliases bridge those names
+to names stored in NetCDF products.
 
-The analysis-space variables after `Control2Analysis` are:
+After `Control2Analysis`, the analysis variables are:
 
 ```text
 eastward_wind
@@ -89,39 +74,25 @@ water_vapor_mixing_ratio_wrt_moist_air
 air_pressure_at_surface
 ```
 
-These canonical analysis names must not be written directly to MPAS stream lists.
-MPAS streams are validated against MPAS Registry names and therefore remain
-MPAS-native.
+MPAS stream output remains MPAS-native.
 
 ## BFLOW: NMC perturbations in control space
 
-The NMC method uses pairs of forecasts valid at the same time but initialized at
-different times. For valid time `T`:
+For valid time `T`, the NMC perturbation is:
 
 ```text
-older forecast: f048 initialized at T - 48 h
-newer forecast: f024 initialized at T - 24 h
-perturbation:   f048(T) - f024(T)
+f048(T), initialized at T - 48 h
+minus
+f024(T), initialized at T - 24 h
 ```
 
-`mpaswf` produces the MPAS forecast products and manifest. `BFLOW` then performs
-the B-matrix-specific preparation:
-
-```text
-MPAS forecast pairs
-  -> full fields FULL_f48.nc and FULL_f24.nc
-  -> perturbation PTB_f48mf24.nc
-  -> derived controls such as stream_function, velocity_potential, temperature and spechum
-  -> optional MPAS <-> regular-latlon ESMF weights
-```
-
-BFLOW is the first stage owned by this repository.
+`mpaswf` produces the forecast pairs. BFLOW prepares the full fields,
+`PTB_f48mf24.nc`, derived controls, and any required regridding products.
 
 ## VBAL: balanced relationships
 
-`VBAL` calibrates the `BUMP_VerticalBalance` block. It estimates how part of one
-control variable can be statistically explained by another. In the current
-configuration, the key balance source is streamfunction:
+`VBAL` calibrates `BUMP_VerticalBalance`. In the current configuration the main
+balance source is streamfunction:
 
 ```text
 velocity_potential  <- stream_function
@@ -129,141 +100,98 @@ temperature         <- stream_function
 surface_pressure    <- stream_function
 ```
 
-The output `mpas_vbal.nc` stores the balance coefficients. `mpas_sampling.nc` and
-local sampling products describe the sampling information used by BUMP. These
-files are needed later by `SO`, `DIRAC`, and any application of the complete B.
+`mpas_vbal.nc` stores the balance coefficients. `mpas_sampling.nc` and local
+sampling products store the BUMP sampling information. VBAL is a calibration
+stage; it does not need to write a transformed ensemble.
 
-## UNBALANCE: explicit K2 inverse application
+## Inverse balance transform before HDIAG
 
-The explicit `UNBALANCE` stage is the main correction relative to older
-stage-only descriptions of the workflow.
+HDIAG must estimate amplitude and correlation scales from perturbations in the
+unbalanced control space. The scientific operation is the inverse balance
+transform `K2^-1`.
 
-The tutorial-style theoretical flow assumes that the samples used by HDIAG are
-already in the unbalanced control space. In practice, the public toolbox path
-used for VBAL calibration does not provide a reliable final disk-written contract
-for those members when using iterative ensemble loading.
-
-Therefore this repository keeps the step explicit:
+The previous implementation materialized that result:
 
 ```text
-VBAL calibrates K2
-UNBALANCE applies K2^-1 to centered PTB members
-HDIAG reads samplesUnbalanced only
+centered NMC sample
+  -> K2^-1
+  -> samplesUnbalanced/*.nc
+  -> HDIAG
 ```
 
-The resulting members are:
+The production implementation performs the same operation inside the SABER
+chain:
 
 ```text
-samplesUnbalanced/PTB_f48mf24_001.nc
-samplesUnbalanced/PTB_f48mf24_002.nc
-samplesUnbalanced/PTB_f48mf24_003.nc
-samplesUnbalanced/PTB_f48mf24_004.nc
-...
+centered NMC sample
+  -> BUMP_VerticalBalance outer block
+  -> inverse transform in memory
+  -> BUMP_NICAS HDIAG calibration
 ```
 
-These files are not raw perturbations. They are centered members after removal of
-the balance component represented by `K2`.
+Thus the scientific quantity entering HDIAG is unchanged; only the unnecessary
+write/read of transformed members is removed. This also avoids dependence on the
+removed `background error.output ensemble` behavior.
+
+The retained `unbalance_core` represents the former materialized path solely for
+A/B regression validation. See
+[`in-memory-vbal-hdiag.md`](in-memory-vbal-hdiag.md).
 
 ## HDIAG: amplitude and length-scale diagnostics
 
-`HDIAG` computes the BUMP diagnostics used by later stages:
+HDIAG produces:
 
 ```text
-mpas.stddev.nc  -> standard deviation / amplitude of background error
+mpas.stddev.nc  -> standard deviation / background-error amplitude
 mpas.cor_rh.nc  -> horizontal correlation scale
 mpas.cor_rv.nc  -> vertical correlation scale
 ```
 
-The standard deviation product is used by the `StdDev` block. The horizontal and
-vertical scale products are used by `NICAS` to build the spatial correlation
-operator.
-
-The validated workflow reads unbalanced members from `samplesUnbalanced`, not raw
-BFLOW PTBs.
+The standard-deviation product feeds `StdDev`; the scale products feed NICAS.
+The original NMC samples are read from `samples/`, transformed by inverse VBAL in
+memory, and then consumed by BUMP_NICAS.
 
 ## NICAS: spatial correlation/localization
 
-`NICAS` constructs the spatial correlation/localization part of `B`. It uses the
-horizontal and vertical correlation scales diagnosed by HDIAG:
-
-```text
-HDIAG/mpas.cor_rh.nc -> horizontal scales
-HDIAG/mpas.cor_rv.nc -> vertical scales
-```
-
-NICAS is computed for the control variables and then merged into a single product
-set that can be read by later SABER configurations:
+NICAS uses the HDIAG horizontal and vertical scales to construct the spatial
+correlation/localization operator. Reusable and diagnostic products include:
 
 ```text
 merge/mpas_nicas.nc
 merge/mpas_nicas_local_*
 merge/mpas_nicas_grids_local_*
-```
-
-Two diagnostics are also preserved:
-
-```text
 merge/mpas.nicas_norm.nc
 merge/mpas.dirac_nicas.nc
 ```
 
-`mpas.dirac_nicas.nc` is a NICAS-only diagnostic. It is not the same as the
-complete-B `DIRAC/mpas.dirac.nc` product.
+The NICAS-only DIRAC diagnostic is distinct from the complete-B
+`DIRAC/mpas.dirac.nc`.
 
 ## SO: single-observation variational validation
 
-`SO` means single-observation test. It does not calibrate the B. It validates
-that the complete B can be read and applied by `mpasjedi_variational.x` in a
-small 3D-Var-style experiment with synthetic observations.
-
-The B composition exercised by SO is:
+SO validates the complete B in `mpasjedi_variational.x` using:
 
 ```text
 BUMP_NICAS + StdDev + BUMP_VerticalBalance + Control2Analysis
 ```
 
-A successful SO run demonstrates that the B products, aliases, background fields,
-observation operator configuration, and linear variable change are compatible in
-a variational application.
-
-The analysis file `an.*.nc` is MPAS-native output written through MPAS streams.
-It should not be expected to contain the canonical JEDI/OOPS variable names.
+A successful run demonstrates compatibility of the B products, aliases,
+background fields, observation configuration and variable change.
 
 ## DIRAC: complete-B impulse response
 
-`DIRAC` diagnoses the mathematical response of the complete B directly. It
-applies an impulse in one control variable and writes the response generated by:
+DIRAC applies a control-space impulse through the complete B:
 
 ```text
 BUMP_NICAS + StdDev + BUMP_VerticalBalance + Control2Analysis
 ```
 
-The output is:
-
-```text
-mpas.dirac.nc
-```
-
-This is different from the NICAS-only internal diagnostic. `DIRAC/mpas.dirac.nc`
-should be used to inspect how the full B spreads information across space,
-vertical levels, and variables.
+and writes `mpas.dirac.nc` for scientific inspection of the response.
 
 ## PLOTS: visual diagnostics
 
-`PLOTS` is a local diagnostic stage. It reads completed NetCDF products and writes
-figures and summaries. It does not calibrate, modify, or validate scientific B
-products by itself.
-
-The stage is useful for quick inspection of:
-
-```text
-- standard deviation amplitudes;
-- horizontal and vertical scales;
-- VBAL balance diagnostics;
-- NICAS normalization;
-- complete-B DIRAC responses;
-- global spatial fields.
-```
+PLOTS reads completed products and generates figures and summaries without
+modifying the B products.
 
 ## Product dependency map
 
@@ -271,15 +199,15 @@ The stage is useful for quick inspection of:
 mpaswf manifest
   -> BFLOW/FULL_f24.nc, FULL_f48.nc, PTB_f48mf24.nc
       -> VBAL/mpas_vbal.nc, mpas_sampling.nc
-          -> UNBALANCE/samplesUnbalanced/PTB_f48mf24_*.nc
-              -> HDIAG/mpas.stddev.nc, mpas.cor_rh.nc, mpas.cor_rv.nc
+          -> HDIAG reads original samples and applies K2^-1 in memory
+              -> mpas.stddev.nc, mpas.cor_rh.nc, mpas.cor_rv.nc
                   -> NICAS/merge/mpas_nicas.nc
                       -> SO validation
                       -> DIRAC/mpas.dirac.nc
                           -> PLOTS
 ```
 
-The minimal reusable B product set for later SABER applications is:
+The minimal reusable B product set is:
 
 ```text
 VBAL/mpas_vbal.nc
@@ -288,15 +216,4 @@ HDIAG/mpas.stddev.nc
 NICAS/merge/mpas_nicas.nc
 ```
 
-The diagnostic products should also be preserved for provenance and scientific
-inspection:
-
-```text
-HDIAG/mpas.cor_rh.nc
-HDIAG/mpas.cor_rv.nc
-NICAS/merge/mpas.nicas_norm.nc
-NICAS/merge/mpas.dirac_nicas.nc
-DIRAC/mpas.dirac.nc
-SO/obsout_SO_*.h5
-PLOTS/summary.csv
-```
+Preserve the additional diagnostics for provenance and scientific inspection.
