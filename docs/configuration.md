@@ -15,7 +15,7 @@ configs/bmatrix-x1.10242.yaml
   scientific-contract aggregator
 
 configs/bmatrix/x1.10242/*.yaml
-  controls and stage-specific scientific fragments
+  controls and scientific fragments
 ```
 
 Users normally pass only:
@@ -31,15 +31,13 @@ For the standard x1.10242 JACI case:
 ```bash
 export BMATRIX_ROOT=/path/to/projects/MPAS-BMatrix
 export WORK_ROOT=/path/to/work/MPAS-BMatrix
-
 export MONAN_JEDI_INSTALL_ROOT=/p/projetos/monan_das/$USER/build/monan-jedi
-
 export MPAS_MESH_ROOT=/path/to/mpas_meshes
 export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
 export STACK_ROOT=/path/to/spack-stack
 ```
 
-The normal runtime configuration does not need:
+The normal production configuration does not need:
 
 ```text
 MONAN_JEDI_SOURCE
@@ -59,81 +57,37 @@ install:
   atmosphere_share: ${MONAN_JEDI_INSTALL_ROOT}/share/MPAS/core_atmosphere
 ```
 
-Executables are derived conventionally from `install.root/bin`, including:
+Production executables are derived conventionally from `install.root/bin`:
 
 ```text
 mpasjedi_error_covariance_toolbox.x
 mpasjedi_variational.x
-mpasjedi_unbalance_ensemble.x
 ```
 
-The x1.10242 case consumes MPAS-JEDI runtime YAMLs installed by MONAN-JEDI:
+`mpasjedi_unbalance_ensemble.x` is not required by the production stage graph.
+It is retained only for the temporary legacy A/B comparison path.
 
-```yaml
-static:
-  geovars: ${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/mpas-jedi/namelists/geovars.yaml
-  keptvars: ${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/mpas-jedi/namelists/keptvars.yaml
-```
-
-Consumers must not depend on the MONAN-JEDI source checkout or private work/build
-trees.
+The x1.10242 case consumes MPAS-JEDI runtime YAMLs installed by MONAN-JEDI.
+Consumers must not depend on the MONAN-JEDI source checkout or private
+work/build trees.
 
 ## Case/static inputs
 
-`MPAS_JEDI_STATIC_ROOT` remains separate from the compiled installation because
-it describes the validated scientific case. It should contain the required
-invariant and reference atmosphere files, for example:
-
-```text
-x1.10242.invariant.nc
-namelist.atmosphere_240km
-streams.atmosphere_240km
-stream_list.atmosphere.*
-```
-
-Likewise, mesh and partition files are declared through `MPAS_MESH_ROOT`.
+`MPAS_JEDI_STATIC_ROOT` describes the validated scientific case and should
+contain the required invariant and reference atmosphere files. Mesh and
+partition files are declared through `MPAS_MESH_ROOT`.
 
 ## PBS environment
 
 Variables needed before `scripts/load_jaci_env.sh` runs inside a PBS job belong
-under `environment.variables`:
-
-```yaml
-environment:
-  loader: scripts/load_jaci_env.sh
-  variables:
-    STACK_ROOT: ${STACK_ROOT}
-```
-
-The scheduler writes them explicitly into generated scripts instead of depending
-on arbitrary login-shell inheritance.
+under `environment.variables`; generated scripts must not depend on arbitrary
+login-shell inheritance.
 
 ## Include semantics
 
-A YAML may include one file:
-
-```yaml
-include: jaci.yaml
-```
-
-or several:
-
-```yaml
-include:
-  - controls.yaml
-  - bflow.yaml
-  - vbal.yaml
-```
-
-Rules:
-
-1. paths are relative to the declaring YAML;
-2. files merge in declaration order;
-3. the declaring file overrides included mappings;
-4. nested mappings merge recursively;
-5. lists are atomic and are replaced as complete units;
-6. cyclic includes are rejected;
-7. unresolved environment references are rejected.
+A YAML may include one or several files. Paths are relative to the declaring
+YAML, mappings merge recursively, lists are replaced atomically, cycles are
+rejected and unresolved environment references fail before execution.
 
 ## Where a value belongs
 
@@ -145,35 +99,31 @@ Rules:
 | NMC/BFLOW preprocessing | `configs/bmatrix/x1.10242/bflow.yaml` |
 | Controls and aliases | `configs/bmatrix/x1.10242/controls.yaml` |
 | Vertical-balance calibration | `configs/bmatrix/x1.10242/vbal.yaml` |
-| K2^-1/unbalance scientific read flags | `configs/bmatrix/x1.10242/unbalance.yaml` |
-| HDIAG | `configs/bmatrix/x1.10242/hdiag.yaml` |
+| HDIAG and in-memory inverse-VBAL consumption | `configs/bmatrix/x1.10242/hdiag.yaml` plus `vbal.yaml` |
+| Legacy materialized K2^-1 A/B reference only | `configs/bmatrix/x1.10242/unbalance.yaml` |
 | NICAS | `configs/bmatrix/x1.10242/nicas.yaml` |
 | Single-observation validation | `configs/bmatrix/x1.10242/so.yaml` |
 | DIRAC | `configs/bmatrix/x1.10242/dirac.yaml` |
 
-## UNBALANCE executable
+## Legacy UNBALANCE configuration
 
-The executable is infrastructure, not a scientific parameter. The normal path is
-resolved automatically as:
+`configs/bmatrix/x1.10242/unbalance.yaml` remains included temporarily so the
+previous explicit `K2^-1 -> samplesUnbalanced` implementation can be reproduced
+for A/B validation. It is not part of `bmatrix.pipeline.STAGES` and normal
+`mpas-bmatrix build` does not execute it.
 
-```text
-${MONAN_JEDI_INSTALL_ROOT}/bin/mpasjedi_unbalance_ensemble.x
-```
-
-The scientific UNBALANCE fragment should therefore describe only the BUMP/K2^-1
-contract.
-
-The implementation still accepts an explicit executable in older custom configs,
-but the standard JACI configuration no longer requires one.
+After the in-memory path passes the documented numerical comparison, this
+fragment and `unbalance_core` can be removed in a separate cleanup change.
 
 ## Rebuild rules
 
-A scientific change invalidates that stage and all downstream stages:
+A scientific change invalidates that stage and all downstream production stages:
 
 ```text
-BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
+BFLOW -> VBAL -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
+A VBAL change also changes the transform read by HDIAG, so rerun from VBAL.
 Run from the earliest invalid stage with `--clean`.
 
 ## Adding another mesh/case
