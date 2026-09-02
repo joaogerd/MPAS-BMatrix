@@ -26,7 +26,7 @@ products.
 | [`user-guide.md`](user-guide.md) | Main user guide: installation, stage-by-stage execution and acceptance checks. |
 | [`configuration.md`](configuration.md) | Configuration hierarchy, required environment variables, include rules and rebuild boundaries. |
 | [`jaci-quickstart.md`](jaci-quickstart.md) | Compact JACI-oriented command sequence. |
-| [`stage-products.md`](stage-products.md) | Inputs, outputs and acceptance criteria for each stage. |
+| [`stage-products.md`](stage-products.md) | Inputs, outputs and acceptance criteria for each production stage. |
 | [`mpaswf-pairs.md`](mpaswf-pairs.md) | How to generate f024/f048 MPAS NMC forecast pairs and the manifest with `mpaswf`. |
 | [`operations.md`](operations.md) | Troubleshooting, validation commands and operational notes. |
 | [`diagnostics-and-plots.md`](diagnostics-and-plots.md) | Plot products, visual diagnostics and style conventions. |
@@ -38,8 +38,9 @@ understand how the implementation works.
 
 | Document | Purpose |
 | --- | --- |
-| [`bmatrix-theory.md`](bmatrix-theory.md) | Scientific meaning of the B-matrix and each workflow stage, including explicit UNBALANCE. |
-| [`scientific-contract.md`](scientific-contract.md) | Variable names, aliases, SABER/BUMP blocks, `Control2Analysis`, UNBALANCE and DIRAC invariants. |
+| [`bmatrix-theory.md`](bmatrix-theory.md) | Scientific meaning of the B-matrix and the covariance-training stages. |
+| [`scientific-contract.md`](scientific-contract.md) | Variable names, aliases, SABER/BUMP blocks, `Control2Analysis`, in-memory VBAL/HDIAG and DIRAC invariants. |
+| [`in-memory-vbal-hdiag.md`](in-memory-vbal-hdiag.md) | Migration rationale and A/B validation of the in-memory inverse-VBAL path. |
 | [`developer-guide.md`](developer-guide.md) | Developer workflow, extension rules, rebuild rules and PR expectations. |
 | [`architecture.md`](architecture.md) | Internal module architecture, configuration layers and stage lifecycle. |
 | [`testing.md`](testing.md) | Unit, integration and JACI smoke testing strategy. |
@@ -53,15 +54,20 @@ understand how the implementation works.
 The full operational order is:
 
 ```text
-mpaswf -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
+mpaswf -> BFLOW -> VBAL -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
 `mpaswf` is external and produces the forecast-pair manifest. This repository
 owns the stages starting at BFLOW:
 
 ```text
-BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
+BFLOW -> VBAL -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
+
+The inverse vertical-balance transform required by HDIAG is applied in memory by
+`BUMP_VerticalBalance`; the production workflow does not materialize
+`samplesUnbalanced`. The former `unbalance_core` remains temporarily available
+only for controlled A/B regression tests.
 
 The repository does not own GFS download, WPS/ungrib, MPAS initialization or
 forecast integration. In the current operational chain those upstream products
