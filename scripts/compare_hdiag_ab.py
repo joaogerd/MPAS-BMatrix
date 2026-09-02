@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Compare materialized and in-memory HDIAG NetCDF products.
-
-The tool is intended for the VBAL/HDIAG migration validation. It compares the
-three standard HDIAG products recursively, including variables stored in NetCDF
-groups, and reports numerical differences without requiring byte identity.
-"""
+"""Compare materialized and in-memory HDIAG NetCDF products."""
 from __future__ import annotations
 
 import argparse
@@ -38,10 +33,28 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Compare legacy materialized and in-memory HDIAG products."
     )
-    parser.add_argument("reference", type=Path, help="HDIAG directory from the legacy materialized path")
-    parser.add_argument("candidate", type=Path, help="HDIAG directory from the in-memory VBAL path")
-    parser.add_argument("--rtol", type=float, default=1.0e-6, help="relative tolerance for np.allclose (default: 1e-6)")
-    parser.add_argument("--atol", type=float, default=1.0e-8, help="absolute tolerance for np.allclose (default: 1e-8)")
+    parser.add_argument(
+        "reference",
+        type=Path,
+        help="HDIAG directory from the legacy materialized path",
+    )
+    parser.add_argument(
+        "candidate",
+        type=Path,
+        help="HDIAG directory from the in-memory VBAL path",
+    )
+    parser.add_argument(
+        "--rtol",
+        type=float,
+        default=1.0e-6,
+        help="relative tolerance for np.allclose (default: 1e-6)",
+    )
+    parser.add_argument(
+        "--atol",
+        type=float,
+        default=1.0e-8,
+        help="absolute tolerance for np.allclose (default: 1e-8)",
+    )
     parser.add_argument("--output", type=Path, help="optional CSV output path")
     return parser
 
@@ -71,12 +84,27 @@ def _variable_map(dataset) -> dict[str, object]:
 
 def _as_float_array(variable) -> np.ndarray | None:
     dtype = np.dtype(variable.dtype)
-    if dtype.kind not in "biufc":
+    if dtype.kind not in "biuf":
         return None
     values = variable[:]
     if np.ma.isMaskedArray(values):
-        values = np.ma.filled(values, np.nan)
+        values = np.ma.asarray(values, dtype=np.float64).filled(np.nan)
     return np.asarray(values, dtype=np.float64)
+
+
+def _shape_mismatch(product: str, name: str, ref_shape, cand_shape) -> Result:
+    return Result(
+        product=product,
+        variable=name,
+        shape=f"{ref_shape} != {cand_shape}",
+        max_abs=math.inf,
+        rms=math.inf,
+        max_rel=math.inf,
+        finite_mismatch=0,
+        nan_mismatch=0,
+        inf_mismatch=0,
+        status="SHAPE_MISMATCH",
+    )
 
 
 def _compare_variable(
@@ -93,7 +121,7 @@ def _compare_variable(
     if ref is None or cand is None:
         return None
     if ref.shape != cand.shape:
-        return Result(product, name, f"{ref.shape} != {cand.shape}", math.inf, math.inf, math.inf, 0, 0, 0, "SHAPE_MISMATCH")
+        return _shape_mismatch(product, name, ref.shape, cand.shape)
 
     ref_nan = np.isnan(ref)
     cand_nan = np.isnan(cand)
@@ -109,37 +137,58 @@ def _compare_variable(
     both = ref_finite & cand_finite
 
     if np.any(both):
-        delta = cand[both] - ref[both]
+        ref_values = ref[both]
+        cand_values = cand[both]
+        delta = cand_values - ref_values
         max_abs = float(np.max(np.abs(delta)))
         rms = float(np.sqrt(np.mean(delta * delta)))
-        rel_mask = np.abs(ref[both]) > atol
+        rel_mask = np.abs(ref_values) > atol
         if np.any(rel_mask):
-            max_rel = float(np.max(np.abs(delta[rel_mask]) / np.abs(ref[both][rel_mask])))
+            max_rel = float(
+                np.max(np.abs(delta[rel_mask]) / np.abs(ref_values[rel_mask]))
+            )
         else:
             max_rel = 0.0
-        close = bool(np.allclose(cand[both], ref[both], rtol=rtol, atol=atol, equal_nan=True))
+        close = bool(
+            np.allclose(
+                cand_values,
+                ref_values,
+                rtol=rtol,
+                atol=atol,
+                equal_nan=True,
+            )
+        )
     else:
         max_abs = 0.0
         rms = 0.0
         max_rel = 0.0
         close = True
 
-    status = "PASS" if close and not (finite_mismatch or nan_mismatch or inf_mismatch) else "FAIL"
+    status = "PASS"
+    if not close or finite_mismatch or nan_mismatch or inf_mismatch:
+        status = "FAIL"
+
     return Result(
-        product,
-        name,
-        str(ref.shape),
-        max_abs,
-        rms,
-        max_rel,
-        finite_mismatch,
-        nan_mismatch,
-        inf_mismatch,
-        status,
+        product=product,
+        variable=name,
+        shape=str(ref.shape),
+        max_abs=max_abs,
+        rms=rms,
+        max_rel=max_rel,
+        finite_mismatch=finite_mismatch,
+        nan_mismatch=nan_mismatch,
+        inf_mismatch=inf_mismatch,
+        status=status,
     )
 
 
-def compare_product(reference: Path, candidate: Path, *, rtol: float, atol: float) -> tuple[list[Result], list[str]]:
+def compare_product(
+    reference: Path,
+    candidate: Path,
+    *,
+    rtol: float,
+    atol: float,
+) -> tuple[list[Result], list[str]]:
     try:
         import netCDF4
     except ImportError as exc:  # pragma: no cover - runtime environment check
@@ -153,7 +202,9 @@ def compare_product(reference: Path, candidate: Path, *, rtol: float, atol: floa
         ref_names = set(ref_vars)
         cand_names = set(cand_vars)
         for missing in sorted(ref_names - cand_names):
-            problems.append(f"{reference.name}: variável ausente no candidato: {missing}")
+            problems.append(
+                f"{reference.name}: variável ausente no candidato: {missing}"
+            )
         for extra in sorted(cand_names - ref_names):
             problems.append(f"{reference.name}: variável extra no candidato: {extra}")
         for name in sorted(ref_names & cand_names):
