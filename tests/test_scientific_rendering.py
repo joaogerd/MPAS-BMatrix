@@ -294,6 +294,7 @@ def test_renderers_use_declared_product_names_and_control_mapping(tmp_path: Path
         "surface_pressure",
     ]
     assert ensemble["filename"] == "../samples/custom_ptb_%mem%.nc"
+    assert "output ensemble" not in vbal["background error"]
     relation = vbal["background error"]["saber outer blocks"][0]["calibration"]["vertical balance"]["vbal"][0]
     assert relation == {
         "balanced variable": "velocity_potential",
@@ -304,7 +305,15 @@ def test_renderers_use_declared_product_names_and_control_mapping(tmp_path: Path
     scale = hdiag["background error"]["saber central block"]["calibration"]["variance"]["initial length-scale"][0]
     assert scale["variables"] == ["stream_function", "temperature"]
     hdiag_ensemble = hdiag["background error"]["ensemble"]["members from template"]["template"]
-    assert hdiag_ensemble["filename"] == "../samplesUnbalanced/custom_ptb_%mem%.nc"
+    assert hdiag_ensemble["filename"] == "../samples/custom_ptb_%mem%.nc"
+    hdiag_vbal = hdiag["background error"]["saber outer blocks"][0]
+    assert hdiag_vbal["saber block name"] == "BUMP_VerticalBalance"
+    assert hdiag_vbal["read"]["io"] == {"data directory": "../vbal", "files prefix": "mpas"}
+    assert hdiag_vbal["read"]["drivers"] == {
+        "read local sampling": True,
+        "read vertical balance": True,
+    }
+    assert hdiag_vbal["read"]["vertical balance"]["vbal"][0] == relation
 
 
 def test_so_renderer_uses_normalized_vbal_relations(tmp_path: Path) -> None:
