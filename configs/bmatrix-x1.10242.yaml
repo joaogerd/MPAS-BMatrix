@@ -5,49 +5,40 @@
 # Purpose
 # -------
 # This file is the SINGLE scientific-contract path referenced by
-# configs/jaci-x1.10242.yaml. It does not duplicate the stage parameters. Instead,
-# it composes one documented fragment per pipeline stage.
+# configs/jaci-x1.10242.yaml. It composes the production scientific fragments
+# plus the temporary legacy UNBALANCE fragment used only for A/B validation.
 #
-# The include order follows the scientific workflow:
+# The production scientific workflow is:
 #
-#   controls -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC
+#   controls -> BFLOW -> VBAL -> HDIAG -> NICAS -> SO -> DIRAC
 #
-# PLOTS currently receives its user options from the CLI and has no scientific
-# YAML fragment.
+# HDIAG applies inverse BUMP_VerticalBalance in memory. The unbalance.yaml
+# fragment is intentionally retained during migration so the previous
+# materialized K2^-1 path can be reproduced for numerical comparison; it is not
+# part of bmatrix.pipeline.STAGES.
 #
-# How to modify it
-# ----------------
-# - For a normal parameter change, edit only the matching file under
-#   configs/bmatrix/x1.10242/.
-# - Add a new include here when a new configurable stage is introduced.
-# - Include paths are resolved relative to this file.
-# - Files are merged in the listed order; this file overrides included values.
-# - YAML lists are atomic: a later declaration replaces an earlier list instead
-#   of concatenating it.
-# - Keep this file short so users can immediately see the configuration layout.
+# PLOTS receives its user options from the CLI and has no scientific YAML
+# fragment.
 #
 # Stage fragments
 # ---------------
 # controls.yaml   canonical/file names and 3D/2D dimensions
 # bflow.yaml      NMC preprocessing, products and derived variables
 # vbal.yaml       vertical-balance calibration
-# unbalance.yaml  K2^-1 application/read contract; executable belongs to JACI
-# hdiag.yaml      variance and correlation diagnostics
+# unbalance.yaml  LEGACY A/B reference for materialized K2^-1 samples
+# hdiag.yaml      variance/correlation diagnostics; consumes VBAL in memory
 # nicas.yaml      NICAS calibration and internal diagnostics
 # so.yaml         complete-B variational single-observation validation
 # dirac.yaml      complete-B impulse-response validation
 # =============================================================================
 
-# Version of the MPAS-BMatrix scientific-contract layout. Increment only when a
-# structural change requires migration logic or coordinated downstream updates.
 schema_version: 2
 
-# Compose the complete scientific mapping. Each included file documents every
-# key it owns and its downstream rebuild boundary.
 include:
   - bmatrix/x1.10242/controls.yaml
   - bmatrix/x1.10242/bflow.yaml
   - bmatrix/x1.10242/vbal.yaml
+  # Temporary migration support. Remove after the documented A/B validation.
   - bmatrix/x1.10242/unbalance.yaml
   - bmatrix/x1.10242/hdiag.yaml
   - bmatrix/x1.10242/nicas.yaml
