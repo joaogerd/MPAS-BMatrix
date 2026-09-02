@@ -77,23 +77,43 @@ VBAL
 
 Preserve the same three HDIAG products.
 
-### Comparison criteria
+### Automated HDIAG comparison
 
-Compare corresponding NetCDF variables using absolute and relative numerical
-differences. Exact byte identity is not required because the operation order and
-I/O path differ. The comparison must show that differences are consistent with
-floating-point roundoff and do not alter the scientific fields.
+The branch contains `scripts/compare_hdiag_ab.py`. It recursively reads NetCDF
+groups and compares every common numeric variable in `mpas.stddev.nc`,
+`mpas.cor_rh.nc` and `mpas.cor_rv.nc`.
 
-At minimum record, for every common variable:
+Example:
+
+```bash
+python scripts/compare_hdiag_ab.py \
+  /path/to/materialized-reference-hdiag \
+  /path/to/in-memory-hdiag \
+  --rtol 1e-6 \
+  --atol 1e-8 \
+  --output hdiag-ab-comparison.csv
+```
+
+The command exits with zero only when the required products/variables match and
+all compared values satisfy the selected tolerance. The CSV records:
 
 - maximum absolute difference;
 - RMS difference;
-- maximum relative difference where the reference magnitude is nonzero;
-- number of finite values and any NaN/Inf mismatch.
+- maximum relative difference where the reference magnitude is significant;
+- finite-value mismatch count;
+- NaN mismatch count;
+- Inf mismatch count;
+- pass/fail status for each variable.
 
-Then run NICAS from both HDIAG outputs and compare the resulting BUMP/NICAS
-products. Finally run the same DIRAC and single-observation tests with both
-matrices and compare the resulting increments.
+The default `rtol=1e-6` and `atol=1e-8` are initial regression tolerances, not a
+scientific conclusion. Record the observed differences and tighten or justify
+the final tolerance from the A/B results.
+
+### Downstream comparison
+
+After HDIAG equivalence is established, run NICAS from both HDIAG outputs and
+compare the resulting BUMP/NICAS products. Finally run the same DIRAC and
+single-observation tests with both matrices and compare the resulting responses.
 
 ## Acceptance criteria
 
