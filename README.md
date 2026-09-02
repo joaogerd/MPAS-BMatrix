@@ -15,12 +15,23 @@ The repository starts at the **BFLOW** boundary. Forecast production is owned by
 [`mpaswf`](https://github.com/joaogerd/mpaswf):
 
 ```text
-mpaswf -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
+mpaswf -> BFLOW -> VBAL -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
 `mpaswf` owns GFS/WPS, MPAS initialization/forecast integration and the
 forecast-pair manifest. `MPAS-BMatrix` owns the covariance pipeline from BFLOW
 onward.
+
+The production workflow follows the current NCAR/MPAS-JEDI training pattern:
+VBAL calibrates the vertical-balance coefficients, while HDIAG reads the
+original NMC perturbation samples and applies the inverse VBAL transform in
+memory through a `BUMP_VerticalBalance` outer block before the BUMP diagnostics.
+The transformed ensemble is therefore not materialized as
+`samplesUnbalanced/*.nc` in the normal workflow.
+
+The historical `unbalance_core` implementation is retained temporarily as a
+legacy diagnostic path for A/B validation against the previous materialized
+workflow. It is not a production pipeline stage.
 
 ## Runtime software contract
 
@@ -38,14 +49,16 @@ MPAS-BMatrix derives runtime files from it, including:
 ```text
 $MONAN_JEDI_INSTALL_ROOT/bin/mpasjedi_error_covariance_toolbox.x
 $MONAN_JEDI_INSTALL_ROOT/bin/mpasjedi_variational.x
-$MONAN_JEDI_INSTALL_ROOT/bin/mpasjedi_unbalance_ensemble.x
 $MONAN_JEDI_INSTALL_ROOT/share/MPAS/core_atmosphere
 $MONAN_JEDI_INSTALL_ROOT/share/monan-jedi/mpas-jedi/namelists/geovars.yaml
 $MONAN_JEDI_INSTALL_ROOT/share/monan-jedi/mpas-jedi/namelists/keptvars.yaml
 ```
 
-The workflow no longer needs `MONAN_JEDI_SOURCE` or a separately configured
-`MONAN_JEDI_UNBALANCE_EXE` in the normal runtime path.
+The normal production path does not require
+`mpasjedi_unbalance_ensemble.x`, `MONAN_JEDI_SOURCE`, or a separately configured
+`MONAN_JEDI_UNBALANCE_EXE`. The legacy unbalance implementation remains
+available only for controlled comparison runs while this migration is being
+validated.
 
 For compatibility, the configuration loader still accepts the historical
 `MONAN_JEDI_INSTALL` environment variable when `MONAN_JEDI_INSTALL_ROOT` is not
@@ -145,6 +158,7 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
 - [Operations](docs/operations.md)
 - [B-matrix theory](docs/bmatrix-theory.md)
 - [Scientific contract](docs/scientific-contract.md)
+- [In-memory VBAL/HDIAG migration and A/B validation](docs/in-memory-vbal-hdiag.md)
 - [Developer guide](docs/developer-guide.md)
 - [Architecture](docs/architecture.md)
 - [Testing](docs/testing.md)
