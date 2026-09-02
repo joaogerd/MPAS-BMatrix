@@ -44,7 +44,7 @@ def render_vbal_relations(config: Mapping[str, Any]) -> list[dict[str, object]]:
 
 
 def write_vbal_yaml(config: Mapping[str, Any], path: str | Path, nmembers: int, date: str) -> None:
-    """Render a VBAL calibration YAML with no hard-coded scientific settings."""
+    """Render VBAL calibration without materializing transformed ensemble members."""
     vbal = section(config, "vbal")
     variables = list(ordered_control_file_names(config, vbal.get("group_variable_order")))
     stem = bflow_sample_stem(config)
@@ -73,11 +73,6 @@ def write_vbal_yaml(config: Mapping[str, Any], path: str | Path, nmembers: int, 
                     "nmembers": nmembers,
                     "zero padding": 3,
                 }
-            },
-            "output ensemble": {
-                "filename": f"../samplesUnbalanced/{stem}_%{{member}}%.nc",
-                "date": date,
-                "stream name": "control",
             },
             "saber central block": {"saber block name": "ID"},
             "saber outer blocks": [
