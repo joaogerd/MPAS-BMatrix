@@ -2,7 +2,8 @@
 
 This module is intentionally outside ``bmatrix.pipeline.STAGES``.  It exists
 only to validate the migration from the legacy materialized UNBALANCE path to
-the production in-memory ``BUMP_VerticalBalance`` outer block in HDIAG.
+the production in-memory ``BUMP_VerticalBalance`` outer block in HDIAG and its
+downstream scientific products.
 """
 from __future__ import annotations
 
@@ -19,11 +20,14 @@ import yaml
 
 from .artifacts import StageManifest, read_manifest, write_manifest
 from .config import load_config
+from .dirac_core.runner import prepare as prepare_dirac, submit as submit_dirac, validate as validate_dirac
 from .hdiag_core.config_files import write_hdiag_pbs, write_hdiag_yaml
 from .hdiag_core.model import require_hdiag_members
-from .hdiag_core.runner import submit as submit_hdiag, validate as validate_hdiag
 from .hdiag_core.prepare import prepare as prepare_in_memory_hdiag
+from .hdiag_core.runner import submit as submit_hdiag, validate as validate_hdiag
+from .nicas_core.runner import prepare as prepare_nicas, submit as submit_nicas, validate as validate_nicas
 from .shell import require_file, symlink_force, write_text
+from .so_core.runner import prepare as prepare_so, submit as submit_so, validate as validate_so
 from .unbalance_core.model import unbalance_exe
 from .unbalance_core.runner import prepare as prepare_unbalance, submit as submit_unbalance, validate as validate_unbalance
 from .vbal_core.model import covariance_root, toolbox_exe, vbal_date
@@ -35,8 +39,17 @@ class ABPaths:
     root: Path
     materialized_unbalance: Path
     materialized_hdiag: Path
+    materialized_nicas: Path
+    materialized_so: Path
+    materialized_dirac: Path
     in_memory_hdiag: Path
+    in_memory_nicas: Path
+    in_memory_so: Path
+    in_memory_dirac: Path
     comparison_csv: Path
+    nicas_comparison_csv: Path
+    so_comparison_csv: Path
+    dirac_comparison_csv: Path
 
     def as_dict(self) -> dict[str, str]:
         return {key: str(value) for key, value in asdict(self).items()}
@@ -45,12 +58,23 @@ class ABPaths:
 def ab_paths(config: Mapping[str, object], vbal_workspace: str | Path, root: str | Path | None = None) -> ABPaths:
     vbal = Path(vbal_workspace).resolve()
     base = Path(root).resolve() if root else covariance_root(config) / "ab_hdiag" / vbal.name
+    materialized = base / "materialized"
+    in_memory = base / "in-memory"
     return ABPaths(
         root=base,
-        materialized_unbalance=base / "materialized" / "unbalance",
-        materialized_hdiag=base / "materialized" / "hdiag",
-        in_memory_hdiag=base / "in-memory" / "hdiag",
+        materialized_unbalance=materialized / "unbalance",
+        materialized_hdiag=materialized / "hdiag",
+        materialized_nicas=materialized / "nicas",
+        materialized_so=materialized / "so",
+        materialized_dirac=materialized / "dirac",
+        in_memory_hdiag=in_memory / "hdiag",
+        in_memory_nicas=in_memory / "nicas",
+        in_memory_so=in_memory / "so",
+        in_memory_dirac=in_memory / "dirac",
         comparison_csv=base / "hdiag-ab-comparison.csv",
+        nicas_comparison_csv=base / "nicas-ab-comparison.csv",
+        so_comparison_csv=base / "so-ab-comparison.csv",
+        dirac_comparison_csv=base / "dirac-ab-comparison.csv",
     )
 
 
@@ -227,14 +251,134 @@ def compare(paths: ABPaths, *, rtol: float, atol: float) -> int:
     return subprocess.run(command, check=False).returncode
 
 
+def _branch_paths(paths: ABPaths, branch: str) -> tuple[Path, Path, Path, Path]:
+    if branch == "materialized":
+        return paths.materialized_hdiag, paths.materialized_nicas, paths.materialized_so, paths.materialized_dirac
+    if branch == "in-memory":
+        return paths.in_memory_hdiag, paths.in_memory_nicas, paths.in_memory_so, paths.in_memory_dirac
+    raise ValueError(f"branch A/B inválido: {branch}")
+
+
+def run_downstream(
+    config: Mapping[str, object],
+    vbal: Path,
+    paths: ABPaths,
+    *,
+    branch: str,
+    clean: bool,
+    poll_seconds: int,
+    nicas_parallel: bool,
+    so_variant: str,
+) -> None:
+    """Run NICAS, SO and DIRAC from one already validated A/B HDIAG branch."""
+    hdiag, nicas, so, dirac = _branch_paths(paths, branch)
+    validate_vbal(vbal)
+    validate_hdiag(hdiag)
+
+    _require_fresh(nicas, clean, f"Workspace NICAS {branch} A/B")
+    prepare_nicas(config, hdiag, workspace=nicas, clean=clean)
+    submit_nicas(nicas, wait=True, poll_seconds=poll_seconds, parallel=nicas_parallel)
+    validate_nicas(nicas)
+
+    _require_fresh(so, clean, f"Workspace SO {branch} A/B")
+    prepare_so(config, nicas, hdiag, vbal, workspace=so, clean=clean, variant=so_variant)
+    submit_so(so, wait=True, poll_seconds=poll_seconds, variant=so_variant)
+    validate_so(so, variant=so_variant)
+
+    _require_fresh(dirac, clean, f"Workspace DIRAC {branch} A/B")
+    prepare_dirac(config, nicas, hdiag, vbal, workspace=dirac, clean=clean)
+    submit_dirac(dirac, wait=True, poll_seconds=poll_seconds)
+    validate_dirac(dirac)
+
+
+def _compare_tree(
+    reference: Path,
+    candidate: Path,
+    includes: tuple[str, ...],
+    output: Path,
+    *,
+    rtol: float,
+    atol: float,
+) -> int:
+    script = Path(__file__).resolve().parents[2] / "scripts" / "compare_netcdf_trees.py"
+    require_file(script, "scripts/compare_netcdf_trees.py")
+    command = [
+        sys.executable,
+        str(script),
+        str(reference),
+        str(candidate),
+        "--rtol",
+        str(rtol),
+        "--atol",
+        str(atol),
+        "--output",
+        str(output),
+    ]
+    for pattern in includes:
+        command.extend(["--include", pattern])
+    return subprocess.run(command, check=False).returncode
+
+
+def compare_downstream(paths: ABPaths, *, rtol: float, atol: float) -> int:
+    """Compare complete NICAS products, DIRAC response and SO analyses."""
+    comparisons = [
+        (
+            "NICAS",
+            paths.materialized_nicas,
+            paths.in_memory_nicas,
+            (
+                "*/mpas_nicas.nc",
+                "*/mpas.nicas_norm.nc",
+                "*/mpas.dirac_nicas.nc",
+                "*/mpas_nicas_local_*",
+                "*/mpas_nicas_grids_local_*",
+            ),
+            paths.nicas_comparison_csv,
+        ),
+        (
+            "SO analysis",
+            paths.materialized_so,
+            paths.in_memory_so,
+            ("an.*.nc",),
+            paths.so_comparison_csv,
+        ),
+        (
+            "DIRAC",
+            paths.materialized_dirac,
+            paths.in_memory_dirac,
+            ("mpas.dirac.nc",),
+            paths.dirac_comparison_csv,
+        ),
+    ]
+    returncode = 0
+    for label, reference, candidate, includes, output in comparisons:
+        print(f"=== {label} A/B comparison ===")
+        code = _compare_tree(reference, candidate, includes, output, rtol=rtol, atol=atol)
+        returncode = max(returncode, code)
+    return returncode
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Controlled HDIAG A/B validation; never part of production STAGES.")
-    parser.add_argument("phase", choices=("plan", "reference", "candidate", "compare"))
+    parser = argparse.ArgumentParser(description="Controlled A/B validation; never part of production STAGES.")
+    parser.add_argument(
+        "phase",
+        choices=(
+            "plan",
+            "reference",
+            "candidate",
+            "compare",
+            "downstream-reference",
+            "downstream-candidate",
+            "compare-downstream",
+        ),
+    )
     parser.add_argument("--config", default="configs/jaci-x1.10242.yaml")
     parser.add_argument("--vbal-workspace", type=Path, required=True)
     parser.add_argument("--root", type=Path, help="Optional isolated A/B root.")
     parser.add_argument("--clean", action="store_true", help="Explicitly recreate the selected A/B workspace.")
     parser.add_argument("--poll-seconds", type=int, default=30)
+    parser.add_argument("--nicas-parallel", action="store_true", help="Submit NICAS variables in parallel for both A/B paths.")
+    parser.add_argument("--so-variant", default="default", choices=("default", "t-only", "u-only"))
     parser.add_argument("--rtol", type=float, default=1.0e-6)
     parser.add_argument("--atol", type=float, default=1.0e-8)
     return parser
@@ -267,6 +411,34 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.phase == "compare":
         return compare(paths, rtol=args.rtol, atol=args.atol)
+    if args.phase == "downstream-reference":
+        run_downstream(
+            config,
+            vbal,
+            paths,
+            branch="materialized",
+            clean=args.clean,
+            poll_seconds=args.poll_seconds,
+            nicas_parallel=args.nicas_parallel,
+            so_variant=args.so_variant,
+        )
+        print(json.dumps({"downstream_reference": str(paths.materialized_nicas.parent)}, indent=2))
+        return 0
+    if args.phase == "downstream-candidate":
+        run_downstream(
+            config,
+            vbal,
+            paths,
+            branch="in-memory",
+            clean=args.clean,
+            poll_seconds=args.poll_seconds,
+            nicas_parallel=args.nicas_parallel,
+            so_variant=args.so_variant,
+        )
+        print(json.dumps({"downstream_candidate": str(paths.in_memory_nicas.parent)}, indent=2))
+        return 0
+    if args.phase == "compare-downstream":
+        return compare_downstream(paths, rtol=args.rtol, atol=args.atol)
     raise AssertionError(args.phase)
 
 
