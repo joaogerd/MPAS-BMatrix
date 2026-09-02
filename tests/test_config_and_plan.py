@@ -144,21 +144,18 @@ def test_repository_default_config_composes_all_scientific_stages(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     root = Path(__file__).resolve().parents[1]
-    variables = {
-        "BMATRIX_ROOT": str(root),
-        "WORK_ROOT": str(tmp_path / "work"),
-        "MONAN_JEDI_INSTALL_ROOT": str(tmp_path / "install"),
-        "MPAS_MESH_ROOT": str(tmp_path / "meshes"),
-        "MPAS_JEDI_STATIC_ROOT": str(tmp_path / "static"),
-        "STACK_ROOT": str(tmp_path / "spack-stack"),
-    }
-    for name, item in variables.items():
-        monkeypatch.setenv(name, item)
+    monkeypatch.setenv("USER", "runtime-user")
+    monan_jedi_root = str(tmp_path / "install")
+    monkeypatch.setenv("MONAN_JEDI_INSTALL_ROOT", monan_jedi_root)
 
     config = load_config(root / "configs" / "jaci-x1.10242.yaml")
 
     assert config["project"]["name"] == "MPAS-BMatrix"
+    assert config["project"]["project_root"] == "/p/projetos/monan_das/runtime-user/projects/MPAS-BMatrix"
+    assert config["project"]["work_root"] == "/p/projetos/monan_das/runtime-user/work/MPAS-BMatrix"
     assert config["mesh"]["name"] == "x1.10242"
+    assert config["mesh"]["grid"] == "/p/projetos/monan_das/runtime-user/projects/mpas_meshes/quasi_uniform/x1.10242_240km/mesh/x1.10242.grid.nc"
+    assert config["static"]["invariant"] == "/p/projetos/monan_das/runtime-user/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files/x1.10242.invariant.nc"
     assert config["schema_version"] == 2
     for section in (
         "controls",
@@ -172,19 +169,22 @@ def test_repository_default_config_composes_all_scientific_stages(
     ):
         assert section in config
     assert "wps" not in config
-    assert config["install"]["root"] == variables["MONAN_JEDI_INSTALL_ROOT"]
+    assert config["install"]["root"] == monan_jedi_root
     assert config["install"]["atmosphere_share"] == str(
-        Path(variables["MONAN_JEDI_INSTALL_ROOT"]) / "share/MPAS/core_atmosphere"
+        Path(monan_jedi_root) / "share/MPAS/core_atmosphere"
     )
     assert config["static"]["geovars"] == str(
-        Path(variables["MONAN_JEDI_INSTALL_ROOT"])
+        Path(monan_jedi_root)
         / "share/monan-jedi/mpas-jedi/namelists/geovars.yaml"
     )
     assert config["static"]["keptvars"] == str(
-        Path(variables["MONAN_JEDI_INSTALL_ROOT"])
+        Path(monan_jedi_root)
         / "share/monan-jedi/mpas-jedi/namelists/keptvars.yaml"
     )
-    assert config["environment"]["variables"]["STACK_ROOT"] == variables["STACK_ROOT"]
+    assert config["environment"]["variables"]["STACK_ROOT"] == (
+        "/p/projetos/monan_das/runtime-user/work/"
+        "spack-stack-inpe-overlay-20260515T181917Z/spack-stack"
+    )
 
 
 def test_plan_from_manifest_is_side_effect_free(tmp_path: Path) -> None:

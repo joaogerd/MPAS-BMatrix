@@ -22,13 +22,14 @@
 
 project:
   name: MPAS-BMatrix
-  project_root: ${BMATRIX_ROOT}
-  work_root: ${WORK_ROOT}
+  project_root: /p/projetos/monan_das/$USER/projects/MPAS-BMatrix
+  work_root: /p/projetos/monan_das/$USER/work/MPAS-BMatrix
 
 environment:
   loader: scripts/load_jaci_env.sh
   variables:
-    STACK_ROOT: ${STACK_ROOT}
+    # Exact JACI spack-stack environment already validated by MONAN-JEDI/mpaswf.
+    STACK_ROOT: /p/projetos/monan_das/$USER/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack
 
 install:
   # Canonical MONAN-JEDI public runtime prefix.
