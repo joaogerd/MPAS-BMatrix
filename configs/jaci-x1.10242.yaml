@@ -10,21 +10,24 @@
 # MONAN-JEDI source trees are deliberately not part of this runtime contract.
 # geovars.yaml and keptvars.yaml are installed by MONAN-JEDI below
 # <install.root>/share/monan-jedi/mpas-jedi/namelists/.
+#
+# The concrete x1.10242 mesh/static paths match the JACI case already validated
+# end-to-end by mpaswf.  They remain case inputs, not MONAN-JEDI software paths.
 # =============================================================================
 
 include: jaci.yaml
 
 mesh:
   name: x1.10242
-  grid: ${MPAS_MESH_ROOT}/quasi_uniform/x1.10242_240km/mesh/x1.10242.grid.nc
-  graph: ${MPAS_MESH_ROOT}/quasi_uniform/x1.10242_240km/graph/x1.10242.graph.info
-  partitions_dir: ${MPAS_MESH_ROOT}/quasi_uniform/x1.10242_240km/partitions
+  grid: /p/projetos/monan_das/$USER/projects/mpas_meshes/quasi_uniform/x1.10242_240km/mesh/x1.10242.grid.nc
+  graph: /p/projetos/monan_das/$USER/projects/mpas_meshes/quasi_uniform/x1.10242_240km/graph/x1.10242.graph.info
+  partitions_dir: /p/projetos/monan_das/$USER/projects/mpas_meshes/quasi_uniform/x1.10242_240km/partitions
   nproc: 128
   nvertlevels: 55
 
 static:
-  invariant: ${MPAS_JEDI_STATIC_ROOT}/x1.10242.invariant.nc
-  tutorial_physics_files: ${MPAS_JEDI_STATIC_ROOT}
+  invariant: /p/projetos/monan_das/$USER/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files/x1.10242.invariant.nc
+  tutorial_physics_files: /p/projetos/monan_das/$USER/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files
 
   # Public runtime support installed by MONAN-JEDI.
   geovars: ${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/mpas-jedi/namelists/geovars.yaml
