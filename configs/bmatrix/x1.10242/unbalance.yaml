@@ -1,38 +1,32 @@
 # =============================================================================
-# MPAS-BMatrix scientific contract — UNBALANCE stage
+# MPAS-BMatrix scientific contract — LEGACY UNBALANCE A/B reference
 # =============================================================================
 #
-# Purpose
-# -------
-# Configures the explicit stage between VBAL and HDIAG. The stage reads the
-# calibrated BUMP_VerticalBalance products, applies K2^-1 to each centered
-# perturbation and writes the samplesUnbalanced ensemble consumed by HDIAG.
+# This fragment is NOT part of the production stage graph.
 #
-# Rebuild boundary
-# ----------------
-# Changes affect UNBALANCE and every downstream stage:
-# HDIAG, NICAS, SO, DIRAC and PLOTS.
+# The production path is:
 #
-# How to modify it
-# ----------------
-# - Keep executable paths, queues and directories in the platform configuration;
-#   the executable is `install.unbalance_executable` in configs/jaci.yaml.
-# - Change the driver flags only when the format/location of the calibrated VBAL
-#   products changes and validate the generated run_unbalance.yaml on JACI.
-# - pseudo_inverse and dominant_mode remain in vbal.yaml because they define how
-#   the calibrated balance operator is inverted, not where the executable runs.
+#   VBAL -> HDIAG
+#
+# where HDIAG reads the original centered NMC perturbations and applies inverse
+# BUMP_VerticalBalance in memory before BUMP_NICAS calibration.
+#
+# This fragment is retained temporarily so the previous explicit path can be
+# reproduced during migration validation:
+#
+#   VBAL -> UNBALANCE (K2^-1 -> samplesUnbalanced) -> reference HDIAG
+#
+# Remove this fragment together with unbalance_core after the documented A/B
+# comparison demonstrates numerical equivalence through HDIAG/NICAS/DIRAC/SO.
 # =============================================================================
 
 unbalance:
   drivers:
-    # Read the rank-local sampling products written by VBAL. The validated flow
-    # stages these files in the UNBALANCE workspace and requires this flag.
+    # Legacy materialized path reads the rank-local sampling products from VBAL.
     read local sampling: true
 
-    # The current explicit inversion reads local sampling products and does not
-    # require the global sampling file. Enable only after validating the SABER
-    # contract for a different product layout.
+    # The validated legacy inversion does not require global sampling.
     read global sampling: false
 
-    # Read the calibrated vertical-balance coefficients (mpas_vbal products).
+    # Read the calibrated vertical-balance coefficients.
     read vertical balance: true
