@@ -9,8 +9,8 @@ from ..vbal_core.model import covariance_root
 MIN_HDIAG_MEMBERS = 4
 
 
-def hdiag_workspace(config, unbalance_workspace_path: str | Path) -> Path:
-    return covariance_root(config) / "hdiag" / Path(unbalance_workspace_path).name
+def hdiag_workspace(config, vbal_workspace_path: str | Path) -> Path:
+    return covariance_root(config) / "hdiag" / Path(vbal_workspace_path).name
 
 
 def require_hdiag_members(samples: list[Path], minimum_members: int = MIN_HDIAG_MEMBERS) -> None:
