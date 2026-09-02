@@ -43,6 +43,7 @@ def _matches(root: Path, patterns: list[str]) -> dict[str, Path]:
 def _print_summary(rows: list[Result], common_files: int, problems: list[str]) -> None:
     passed = sum(row.status == "PASS" for row in rows)
     failed = len(rows) - passed
+    status = "PASS" if rows and failed == 0 and not problems else "FAIL"
     if rows:
         worst = max(rows, key=lambda row: row.max_rel)
         max_abs_row = max(rows, key=lambda row: row.max_abs)
@@ -51,8 +52,9 @@ def _print_summary(rows: list[Result], common_files: int, problems: list[str]) -
         inf_mismatch = sum(row.inf_mismatch for row in rows)
         print(
             "SUMMARY "
-            f"files={common_files} numeric_variables={len(rows)} passed={passed} failed={failed} "
-            f"problems={len(problems)} max_rel={worst.max_rel:.17g} "
+            f"status={status} files={common_files} numeric_variables={len(rows)} "
+            f"passed={passed} failed={failed} problems={len(problems)} "
+            f"max_rel={worst.max_rel:.17g} "
             f"worst_rel={worst.product}:{worst.variable} "
             f"max_abs={max_abs_row.max_abs:.17g} "
             f"worst_abs={max_abs_row.product}:{max_abs_row.variable} "
@@ -61,7 +63,8 @@ def _print_summary(rows: list[Result], common_files: int, problems: list[str]) -
     else:
         print(
             "SUMMARY "
-            f"files={common_files} numeric_variables=0 passed=0 failed=0 problems={len(problems)}"
+            f"status={status} files={common_files} numeric_variables=0 "
+            f"passed=0 failed=0 problems={len(problems)}"
         )
 
 
