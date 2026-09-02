@@ -1,6 +1,6 @@
 # Workflow
 
-This document describes the operational flow represented by the `main` branch.
+This document describes the production flow represented by this branch.
 
 ## 0. Checkout layout
 
@@ -156,28 +156,25 @@ VBAL/mpas_vbal_local_*
 VBAL/mpas_sampling_local_*
 ```
 
-VBAL is a calibration stage. It does not, by itself, provide a reliable public
-contract for writing the final unbalanced ensemble members on disk.
+VBAL is a calibration stage only. It no longer requests
+`background error.output ensemble` and does not write a transformed ensemble.
 
-## 4. UNBALANCE
+## 4. HDIAG
 
-UNBALANCE is an explicit stage added to materialize the members needed by HDIAG.
+HDIAG reads the original centered NMC perturbation members from the VBAL
+workspace and applies `K2^-1` in memory with `BUMP_VerticalBalance` configured
+as a SABER outer block. BUMP_NICAS diagnostics are therefore calibrated from the
+same unbalanced control-space perturbations used by the previous materialized
+workflow, without writing `samplesUnbalanced` to disk.
 
-It applies `K2^-1` to centered perturbations and writes:
+The effective sequence is:
 
 ```text
-samplesUnbalanced/PTB_f48mf24_001.nc
-samplesUnbalanced/PTB_f48mf24_002.nc
-samplesUnbalanced/PTB_f48mf24_003.nc
-samplesUnbalanced/PTB_f48mf24_004.nc
+samples/PTB_f48mf24_*.nc
+  -> BUMP_VerticalBalance read from VBAL products
+  -> inverse outer-block transform in memory
+  -> BUMP_NICAS HDIAG/VAR calibration
 ```
-
-Those files are not raw PTBs. They are centered perturbations in the unbalanced
-control space. HDIAG must use these files exclusively.
-
-## 5. HDIAG
-
-HDIAG computes global diagnostics from `samplesUnbalanced`.
 
 Expected products:
 
@@ -197,7 +194,11 @@ distance class width: 1000000.0
 
 This keeps `(10 - 1) * 1000000` below the default BUMP limit.
 
-## 6. NICAS
+The former explicit UNBALANCE implementation is retained only for A/B
+validation and is not a production pipeline stage. See
+[`in-memory-vbal-hdiag.md`](in-memory-vbal-hdiag.md).
+
+## 5. NICAS
 
 NICAS builds the local/global correlation model and normalization diagnostics.
 
@@ -222,7 +223,7 @@ vertical dimensionality:
 Without this split, BUMP can try to read the 2D `surface_pressure` local NICAS
 group using a 3D `nl0`, leading to `wrong size for dimension nl0`.
 
-## 7. SO
+## 6. SO
 
 SO is a variational single-observation validation of the complete B composition.
 
@@ -248,7 +249,7 @@ contain canonical JEDI variables. A successful SO is identified by:
 - obsout files;
 - an MPAS-native `an.*.nc` in CDF5 format.
 
-## 8. DIRAC
+## 7. DIRAC
 
 DIRAC applies a complete-B impulse response test.
 
@@ -277,7 +278,7 @@ Expected product:
 DIRAC/mpas.dirac.nc
 ```
 
-## 9. PLOTS
+## 8. PLOTS
 
 PLOTS is local post-processing. It does not change scientific products.
 
