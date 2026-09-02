@@ -66,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     weights.add_argument("--force", action="store_true", help="Regenera ambos os arquivos de peso.")
     weights.set_defaults(handler=_weights)
 
-    build_command = sub.add_parser("build", help="Executa BFLOW, VBAL, UNBALANCE, HDIAG, NICAS, SO, DIRAC e PLOTS.")
+    build_command = sub.add_parser("build", help="Executa BFLOW, VBAL, HDIAG, NICAS, SO, DIRAC e PLOTS.")
     _add_common(build_command)
     _add_pair_source(build_command)
     build_command.add_argument("--from-stage", choices=STAGES, default="bflow")
