@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .config import load_config
 from .errors import BMatrixError
+from .nmc_core.checks import validate_manifest as validate_nmc_manifest
 from .pipeline import BuildRequest, STAGES, build, generate_weights, plan, validate
 from .plots_core.runner import generate_plots
 
@@ -51,6 +52,13 @@ def build_parser() -> argparse.ArgumentParser:
     check = sub.add_parser("check-config", help="Valida e mostra a configuração resolvida.")
     check.add_argument("--config", default=DEFAULT_CONFIG)
     check.set_defaults(handler=_check_config)
+
+    check_manifest = sub.add_parser(
+        "check-manifest",
+        help="Valida o manifest NMC/mpaswf antes de iniciar BFLOW.",
+    )
+    check_manifest.add_argument("--manifest", type=Path, required=True)
+    check_manifest.set_defaults(handler=_check_manifest)
 
     weights = sub.add_parser("weights", help="Gera apenas pesos ESMPy MPAS <-> lat-lon no workspace BFLOW.")
     _add_common(weights)
@@ -118,6 +126,12 @@ def _request(args: argparse.Namespace, *, dry_run: bool = False) -> BuildRequest
 
 def _check_config(args: argparse.Namespace) -> int:
     print(json.dumps(load_config(args.config), indent=2, default=str, sort_keys=True))
+    return 0
+
+
+def _check_manifest(args: argparse.Namespace) -> int:
+    report = validate_nmc_manifest(args.manifest)
+    print(json.dumps(report, indent=2, default=str, sort_keys=True))
     return 0
 
 
