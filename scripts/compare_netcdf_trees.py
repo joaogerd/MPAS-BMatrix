@@ -24,9 +24,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--atol", type=float, default=1.0e-8)
     parser.add_argument("--output", type=Path)
     parser.add_argument(
-        "--summary-only",
+        "--verbose",
         action="store_true",
-        help="write complete CSV but print only aggregate comparison statistics",
+        help="print every numeric comparison row; the complete CSV is written regardless",
     )
     return parser
 
@@ -45,11 +45,18 @@ def _print_summary(rows: list[Result], common_files: int, problems: list[str]) -
     failed = len(rows) - passed
     if rows:
         worst = max(rows, key=lambda row: row.max_rel)
+        max_abs_row = max(rows, key=lambda row: row.max_abs)
+        finite_mismatch = sum(row.finite_mismatch for row in rows)
+        nan_mismatch = sum(row.nan_mismatch for row in rows)
+        inf_mismatch = sum(row.inf_mismatch for row in rows)
         print(
             "SUMMARY "
             f"files={common_files} numeric_variables={len(rows)} passed={passed} failed={failed} "
             f"problems={len(problems)} max_rel={worst.max_rel:.17g} "
-            f"worst={worst.product}:{worst.variable}"
+            f"worst_rel={worst.product}:{worst.variable} "
+            f"max_abs={max_abs_row.max_abs:.17g} "
+            f"worst_abs={max_abs_row.product}:{max_abs_row.variable} "
+            f"finite_mismatch={finite_mismatch} nan_mismatch={nan_mismatch} inf_mismatch={inf_mismatch}"
         )
     else:
         print(
@@ -84,9 +91,8 @@ def main() -> int:
         rows.extend(replace(row, product=relative) for row in product_rows)
         problems.extend(f"{relative}: {problem}" for problem in product_problems)
 
-    if args.summary_only:
-        _print_summary(rows, len(common), problems)
-    else:
+    _print_summary(rows, len(common), problems)
+    if args.verbose:
         _write(rows, sys.stdout)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
