@@ -29,13 +29,11 @@ from .products import BMatrixProducts
 from .so_core.prepare import prepare as prepare_so
 from .so_core.runner import submit as submit_so, validate as validate_so
 from .so_core.model import so_workspace
-from .unbalance_core.model import unbalance_workspace
-from .unbalance_core.runner import prepare as prepare_unbalance, submit as submit_unbalance, validate as validate_unbalance
 from .vbal_core.model import vbal_workspace
 from .vbal_core.runner import prepare as prepare_vbal, submit as submit_vbal, validate as validate_vbal
 
-StageName = Literal["bflow", "vbal", "unbalance", "hdiag", "nicas", "so", "dirac", "plots"]
-STAGES: tuple[StageName, ...] = ("bflow", "vbal", "unbalance", "hdiag", "nicas", "so", "dirac", "plots")
+StageName = Literal["bflow", "vbal", "hdiag", "nicas", "so", "dirac", "plots"]
+STAGES: tuple[StageName, ...] = ("bflow", "vbal", "hdiag", "nicas", "so", "dirac", "plots")
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,7 +42,6 @@ class PipelinePaths:
 
     bflow: Path
     vbal: Path
-    unbalance: Path
     hdiag: Path
     nicas: Path
     so: Path
@@ -61,13 +58,11 @@ class PipelinePaths:
         """Resolve all downstream workspaces from the BFLOW workspace name."""
         bflow_path = Path(bflow).resolve()
         vbal = vbal_workspace(config, bflow_path)
-        unbalance = unbalance_workspace(config, vbal)
-        hdiag = hdiag_workspace(config, unbalance)
+        hdiag = hdiag_workspace(config, vbal)
         nicas = nicas_workspace(config, hdiag)
         return cls(
             bflow=bflow_path,
             vbal=vbal,
-            unbalance=unbalance,
             hdiag=hdiag,
             nicas=nicas,
             so=so_workspace(config, nicas),
@@ -180,7 +175,7 @@ def build(config: Mapping[str, object], request: BuildRequest) -> PipelinePlan:
     """Execute a selected, dependency-ordered B-matrix stage range.
 
     The function always waits for submitted scheduler jobs before launching the
-    dependent stage.  It is therefore safe to use for the full calibration
+    dependent stage. It is therefore safe to use for the full calibration
     sequence, while ``dry_run`` returns a plan without touching the filesystem.
     """
     pipeline_plan = plan(config, request)
@@ -201,12 +196,8 @@ def build(config: Mapping[str, object], request: BuildRequest) -> PipelinePlan:
             prepare_vbal(config, paths.bflow, workspace=paths.vbal, clean=request.clean)
             submit_vbal(paths.vbal, wait=True, poll_seconds=request.poll_seconds)
             validate_vbal(paths.vbal)
-        elif stage == "unbalance":
-            prepare_unbalance(config, paths.vbal, workspace=paths.unbalance, clean=request.clean)
-            submit_unbalance(paths.unbalance, wait=True, poll_seconds=request.poll_seconds)
-            validate_unbalance(paths.unbalance, config)
         elif stage == "hdiag":
-            prepare_hdiag(config, paths.unbalance, workspace=paths.hdiag, clean=request.clean)
+            prepare_hdiag(config, paths.vbal, workspace=paths.hdiag, clean=request.clean)
             submit_hdiag(paths.hdiag, wait=True, poll_seconds=request.poll_seconds)
             validate_hdiag(paths.hdiag)
         elif stage == "nicas":
@@ -265,8 +256,6 @@ def validate(config: Mapping[str, object], stage: StageName, paths: PipelinePath
         validate_bflow(config, paths.bflow, pairs, stage="ptb")
     elif stage == "vbal":
         validate_vbal(paths.vbal)
-    elif stage == "unbalance":
-        validate_unbalance(paths.unbalance, config)
     elif stage == "hdiag":
         validate_hdiag(paths.hdiag)
     elif stage == "nicas":
