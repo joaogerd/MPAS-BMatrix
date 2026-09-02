@@ -52,8 +52,17 @@ def test_ab_paths_are_isolated_from_production_hdiag(tmp_path: Path) -> None:
     assert paths.root == tmp_path / "work" / "bmatrix" / "covariance" / "ab_hdiag" / "case"
     assert paths.materialized_unbalance == paths.root / "materialized" / "unbalance"
     assert paths.materialized_hdiag == paths.root / "materialized" / "hdiag"
+    assert paths.materialized_nicas == paths.root / "materialized" / "nicas"
+    assert paths.materialized_so == paths.root / "materialized" / "so"
+    assert paths.materialized_dirac == paths.root / "materialized" / "dirac"
     assert paths.in_memory_hdiag == paths.root / "in-memory" / "hdiag"
+    assert paths.in_memory_nicas == paths.root / "in-memory" / "nicas"
+    assert paths.in_memory_so == paths.root / "in-memory" / "so"
+    assert paths.in_memory_dirac == paths.root / "in-memory" / "dirac"
     assert paths.materialized_hdiag != paths.in_memory_hdiag
+    assert paths.materialized_nicas != paths.in_memory_nicas
+    assert paths.materialized_so != paths.in_memory_so
+    assert paths.materialized_dirac != paths.in_memory_dirac
     assert not paths.root.exists()
 
 
