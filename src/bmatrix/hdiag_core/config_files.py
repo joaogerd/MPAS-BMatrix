@@ -10,6 +10,7 @@ import yaml
 from ..scheduler import bmatrix_job_spec, render_pbs
 from ..scientific_config import bflow_sample_stem, control_file_names, normalize_control, section
 from ..shell import write_text
+from ..vbal_core.config_files import render_vbal_relations
 from ..vbal_core.model import toolbox_exe
 
 BUMP_DEFAULT_UNIVERSE_LENGTH_SCALE = 6371229.0 * math.pi
@@ -66,8 +67,9 @@ def validate_sampling_extent(hdiag: Mapping[str, Any]) -> None:
 
 
 def write_hdiag_yaml(config: Mapping[str, Any], path: str | Path, nmembers: int, date: str, sample_stem: str | None = None) -> None:
-    """Render HDIAG calibration YAML using configured drivers and sampling rules."""
+    """Render HDIAG so raw samples are transformed by inverse VBAL in memory."""
     hdiag = section(config, "hdiag")
+    vbal = section(config, "vbal")
     validate_sampling_extent(hdiag)
     variables = list(control_file_names(config))
     stem = sample_stem or bflow_sample_stem(config)
@@ -97,7 +99,7 @@ def write_hdiag_yaml(config: Mapping[str, Any], path: str | Path, nmembers: int,
                         "date": date,
                         "stream name": "control",
                         "transform model to analysis": False,
-                        "filename": f"../samplesUnbalanced/{stem}_%mem%.nc",
+                        "filename": f"../samples/{stem}_%mem%.nc",
                     },
                     "pattern": "%mem%",
                     "nmembers": nmembers,
@@ -123,6 +125,20 @@ def write_hdiag_yaml(config: Mapping[str, Any], path: str | Path, nmembers: int,
                     ],
                 },
             },
+            "saber outer blocks": [
+                {
+                    "saber block name": "BUMP_VerticalBalance",
+                    "read": {
+                        "io": {
+                            "data directory": "../vbal",
+                            "files prefix": str(vbal.get("files_prefix", "mpas")),
+                        },
+                        "drivers": {"read local sampling": True, "read vertical balance": True},
+                        "model": {"nearest 3d level": "bottom"},
+                        "vertical balance": {"vbal": render_vbal_relations(config)},
+                    },
+                }
+            ],
         },
     }
     write_text(Path(path), yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
