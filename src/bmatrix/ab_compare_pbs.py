@@ -15,7 +15,7 @@ from .shell import qsub, wait_for_pbs_job, write_text
 
 
 def _comparison_shell(command_args: list[str]) -> str:
-    """Resolve a Python with required modules on the compute node and run comparison."""
+    """Resolve a Python with the complete comparison runtime on the compute node."""
     quoted_args = " ".join(shlex.quote(part) for part in command_args)
     return f'''\
 python_candidates=()
@@ -35,15 +35,16 @@ for raw_candidate in "${{python_candidates[@]}}"; do
     candidate="$(command -v "$raw_candidate" 2>/dev/null || true)"
   fi
   [[ -n "$candidate" ]] || continue
-  if "$candidate" -c 'import numpy, netCDF4' >/dev/null 2>&1; then
+  if "$candidate" -c 'import numpy, netCDF4; import bmatrix.ab_hdiag' >/dev/null 2>&1; then
     COMPARE_PYTHON="$candidate"
     break
   fi
 done
 
 if [[ -z "$COMPARE_PYTHON" ]]; then
-  echo "ERRO: nenhum Python acessível no compute node fornece numpy e netCDF4." >&2
+  echo "ERRO: nenhum Python acessível no compute node fornece o runtime completo da comparação (numpy, netCDF4 e bmatrix)." >&2
   echo "PATH=$PATH" >&2
+  echo "PYTHONPATH=${{PYTHONPATH:-}}" >&2
   echo "BMATRIX_COMPARE_PYTHON=${{BMATRIX_COMPARE_PYTHON:-}}" >&2
   for raw_candidate in "${{python_candidates[@]}}"; do
     if [[ "$raw_candidate" == */* ]]; then
