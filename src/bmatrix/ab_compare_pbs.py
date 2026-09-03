@@ -60,7 +60,14 @@ if [[ -z "$COMPARE_PYTHON" ]]; then
 fi
 
 echo "COMPARE_PYTHON=$COMPARE_PYTHON"
+set +e
 "$COMPARE_PYTHON" {quoted_args}
+compare_rc=$?
+set -e
+if [[ "$compare_rc" -ne 0 ]]; then
+  echo "ERRO: comparação científica A/B retornou código $compare_rc; compare.done não será criado." >&2
+  exit "$compare_rc"
+fi
 touch compare.done
 '''
 
