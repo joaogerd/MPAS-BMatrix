@@ -2,23 +2,31 @@
 """Compare Single Observation analysis increments between A/B workspaces.
 
 This is a diagnostic, not an acceptance gate. It verifies that the two SO
-backgrounds are numerically identical and reports how different the analysis
-increments ``analysis - background`` are for every common numeric field.
+backgrounds are numerically identical, reports how different the analysis
+increments ``analysis - background`` are for every common numeric field, and
+prints concise convergence-related excerpts from the existing OOPS run logs.
 """
 from __future__ import annotations
 
 import argparse
 import math
+import re
 from pathlib import Path
 
 import numpy as np
+
+LOG_PATTERN = re.compile(
+    r"(?:DRPCG|gradient|cost|\bJb\b|\bJo\b|iteration|ombg|oman|depart)",
+    re.IGNORECASE,
+)
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Compare SO A/B analysis increments.")
     parser.add_argument("reference", type=Path, help="materialized SO workspace")
     parser.add_argument("candidate", type=Path, help="in-memory SO workspace")
-    parser.add_argument("--top", type=int, default=20, help="maximum rows to print")
+    parser.add_argument("--top", type=int, default=20, help="maximum increment rows to print")
+    parser.add_argument("--log-lines", type=int, default=80, help="maximum matched runlog lines per branch")
     return parser
 
 
@@ -26,6 +34,16 @@ def _analysis(root: Path) -> Path:
     matches = sorted(root.glob("an.*.nc"))
     if len(matches) != 1:
         raise RuntimeError(f"Esperado exatamente um an.*.nc em {root}; encontrados {len(matches)}")
+    return matches[0]
+
+
+def _runlog(root: Path) -> Path:
+    direct = root / "run_so.runlog"
+    if direct.is_file():
+        return direct
+    matches = sorted(root.glob("run_so*.runlog"))
+    if len(matches) != 1:
+        raise RuntimeError(f"Esperado exatamente um run_so*.runlog em {root}; encontrados {len(matches)}")
     return matches[0]
 
 
@@ -49,6 +67,19 @@ def _ratio(numerator: float, denominator: float) -> float:
     return 0.0 if numerator == 0.0 else math.inf
 
 
+def _print_log_excerpt(label: str, path: Path, limit: int) -> None:
+    matches = [line.strip() for line in path.read_text(errors="replace").splitlines() if LOG_PATTERN.search(line)]
+    print(f"=== SO convergence excerpt: {label} ===")
+    print(f"RUNLOG={path}")
+    if not matches:
+        print("LOG_MATCHES=0")
+        return
+    selected = matches[-max(1, limit) :]
+    print(f"LOG_MATCHES={len(matches)} PRINTED={len(selected)}")
+    for line in selected:
+        print(f"{label} | {line}")
+
+
 def main() -> int:
     args = _parser().parse_args()
     reference = args.reference.resolve()
@@ -57,13 +88,15 @@ def main() -> int:
     cand_bg_path = candidate / "bg_so.nc"
     ref_an_path = _analysis(reference)
     cand_an_path = _analysis(candidate)
+    ref_runlog = _runlog(reference)
+    cand_runlog = _runlog(candidate)
 
     try:
         import netCDF4
     except ImportError as exc:  # pragma: no cover
         raise SystemExit("netCDF4 é necessário para executar esta comparação") from exc
 
-    for path in (ref_bg_path, cand_bg_path, ref_an_path, cand_an_path):
+    for path in (ref_bg_path, cand_bg_path, ref_an_path, cand_an_path, ref_runlog, cand_runlog):
         if not path.is_file():
             raise SystemExit(f"ERRO: arquivo obrigatório ausente: {path}")
 
@@ -172,6 +205,9 @@ def main() -> int:
             f"delta_max={float(row['delta_max']):.17g} "
             f"relative_max={float(row['relative_max']):.17g}"
         )
+
+    _print_log_excerpt("A", ref_runlog, args.log_lines)
+    _print_log_excerpt("B", cand_runlog, args.log_lines)
     return 0
 
 
