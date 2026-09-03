@@ -82,7 +82,8 @@ def _print_failure_details(rows: list[Result]) -> None:
             f"worst_ref={row.worst_ref:.17g} "
             f"worst_candidate={row.worst_candidate:.17g} "
             f"worst_abs_delta={row.worst_abs_delta:.17g} "
-            f"max_abs={row.max_abs:.17g} rms={row.rms:.17g} max_rel={row.max_rel:.17g}"
+            f"max_abs={row.max_abs:.17g} rms={row.rms:.17g} "
+            f"relative_rms={row.relative_rms:.17g} max_rel={row.max_rel:.17g}"
         )
 
 
@@ -92,6 +93,7 @@ def _print_summary(rows: list[Result], common_files: int, problems: list[str]) -
     status = "PASS" if rows and failed == 0 and not problems else "FAIL"
     if rows:
         worst_rel = max(rows, key=lambda row: row.max_rel)
+        worst_relative_rms = max(rows, key=lambda row: row.relative_rms)
         worst_abs = max(rows, key=lambda row: row.max_abs)
         worst_scaled = max(rows, key=lambda row: row.max_scaled_error)
         finite_mismatch = sum(row.finite_mismatch for row in rows)
@@ -108,6 +110,8 @@ def _print_summary(rows: list[Result], common_files: int, problems: list[str]) -
             f"failed_fraction={failed_fraction:.17g} "
             f"max_scaled_error={worst_scaled.max_scaled_error:.17g} "
             f"worst_scaled={worst_scaled.product}:{worst_scaled.variable} "
+            f"max_relative_rms={worst_relative_rms.relative_rms:.17g} "
+            f"worst_relative_rms={worst_relative_rms.product}:{worst_relative_rms.variable} "
             f"max_rel={worst_rel.max_rel:.17g} "
             f"worst_rel={worst_rel.product}:{worst_rel.variable} "
             f"max_abs={worst_abs.max_abs:.17g} "
