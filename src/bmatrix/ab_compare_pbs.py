@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
-import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Mapping
@@ -13,6 +12,54 @@ from .ab_hdiag import ab_paths
 from .config import load_config
 from .scheduler import ResourceRequest, bmatrix_job_spec, render_pbs
 from .shell import qsub, wait_for_pbs_job, write_text
+
+
+def _comparison_shell(command_args: list[str]) -> str:
+    """Resolve a Python with required modules on the compute node and run comparison."""
+    quoted_args = " ".join(shlex.quote(part) for part in command_args)
+    return f'''\
+python_candidates=()
+if [[ -n "${{BMATRIX_COMPARE_PYTHON:-}}" ]]; then
+  python_candidates+=("${{BMATRIX_COMPARE_PYTHON}}")
+fi
+python_candidates+=(python3 python)
+
+COMPARE_PYTHON=""
+for raw_candidate in "${{python_candidates[@]}}"; do
+  candidate=""
+  if [[ "$raw_candidate" == */* ]]; then
+    if [[ -x "$raw_candidate" ]]; then
+      candidate="$raw_candidate"
+    fi
+  else
+    candidate="$(command -v "$raw_candidate" 2>/dev/null || true)"
+  fi
+  [[ -n "$candidate" ]] || continue
+  if "$candidate" -c 'import numpy, netCDF4' >/dev/null 2>&1; then
+    COMPARE_PYTHON="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$COMPARE_PYTHON" ]]; then
+  echo "ERRO: nenhum Python acessível no compute node fornece numpy e netCDF4." >&2
+  echo "PATH=$PATH" >&2
+  echo "BMATRIX_COMPARE_PYTHON=${{BMATRIX_COMPARE_PYTHON:-}}" >&2
+  for raw_candidate in "${{python_candidates[@]}}"; do
+    if [[ "$raw_candidate" == */* ]]; then
+      resolved="$raw_candidate"
+    else
+      resolved="$(command -v "$raw_candidate" 2>/dev/null || true)"
+    fi
+    echo "candidate=$raw_candidate resolved=${{resolved:-<not-found>}}" >&2
+  done
+  exit 2
+fi
+
+echo "COMPARE_PYTHON=$COMPARE_PYTHON"
+"$COMPARE_PYTHON" {quoted_args}
+touch compare.done
+'''
 
 
 def prepare_compare_job(
@@ -40,8 +87,7 @@ def prepare_compare_job(
         raise RuntimeError("MONAN_JEDI_INSTALL_ROOT deve estar definido antes de preparar a comparação A/B.")
 
     resolved_config = Path(config_path).resolve()
-    command = [
-        sys.executable,
+    command_args = [
         "-m",
         "bmatrix.ab_hdiag",
         "compare-downstream",
@@ -55,17 +101,25 @@ def prepare_compare_job(
         str(atol),
     ]
     if root is not None:
-        command.extend(["--root", str(Path(root).resolve())])
+        command_args.extend(["--root", str(Path(root).resolve())])
 
-    shell_command = shlex.join(command) + " && touch compare.done"
     spec = bmatrix_job_spec(
         config,
         name="bmatrixABCompare",
         run_dir=run_dir,
-        command=("bash", "-lc", shell_command),
+        command=("bash", "-c", _comparison_shell(command_args)),
         stdout="compare.stdout.log",
         stderr="compare.stderr.log",
     )
+    runtime_environment = {
+        **spec.environment,
+        "PYTHONPATH": str(project_root / "src"),
+        "MONAN_JEDI_INSTALL_ROOT": install_root,
+    }
+    compare_python = os.environ.get("BMATRIX_COMPARE_PYTHON")
+    if compare_python:
+        runtime_environment["BMATRIX_COMPARE_PYTHON"] = compare_python
+
     spec = replace(
         spec,
         resources=ResourceRequest(
@@ -74,17 +128,14 @@ def prepare_compare_job(
             queue=spec.resources.queue,
             threads_per_rank=1,
         ),
-        environment={
-            **spec.environment,
-            "PYTHONPATH": str(project_root / "src"),
-            "MONAN_JEDI_INSTALL_ROOT": install_root,
-        },
+        environment=runtime_environment,
     )
     pbs = run_dir / "qsub_compare_downstream.bash"
     write_text(pbs, render_pbs(spec))
     print("=== A/B downstream comparison PBS ===")
     print(f"WORKSPACE={run_dir}")
     print("NCPUS=1")
+    print("PYTHON=resolved-on-compute-node")
     print(f"PBS={pbs}")
     return run_dir
 
