@@ -29,7 +29,7 @@ def _config(tmp_path: Path) -> tuple[dict[str, object], Path, Path]:
     return config, project_root, config_path
 
 
-def test_comparison_shell_preserves_spack_pythonpath_and_scans_all_path_pythons() -> None:
+def test_comparison_shell_preserves_stack_runtime_and_propagates_failure() -> None:
     text = _comparison_shell([
         "-m",
         "bmatrix.ab_hdiag",
@@ -45,7 +45,11 @@ def test_comparison_shell_preserves_spack_pythonpath_and_scans_all_path_pythons(
     assert "import bmatrix.ab_hdiag" in text
     assert 'echo "COMPARE_PYTHON=$COMPARE_PYTHON"' in text
     assert '"$COMPARE_PYTHON" -m bmatrix.ab_hdiag compare-downstream' in text
-    assert "touch compare.done" in text
+    assert "compare_rc=$?" in text
+    assert 'if [[ "$compare_rc" -ne 0 ]]' in text
+    assert 'exit "$compare_rc"' in text
+    assert "compare.done não será criado" in text
+    assert text.index('exit "$compare_rc"') < text.index("touch compare.done")
     assert "/home2/" not in text
 
 
