@@ -18,23 +18,32 @@ def _comparison_shell(command_args: list[str]) -> str:
     """Resolve a Python with the complete comparison runtime on the compute node."""
     quoted_args = " ".join(shlex.quote(part) for part in command_args)
     return f'''\
+# Preserve Python paths contributed by the JACI/spack-stack modules and prepend
+# only the MPAS-BMatrix source tree required for ``python -m bmatrix...``.
+export PYTHONPATH="${{BMATRIX_PROJECT_SRC}}${{PYTHONPATH:+:${{PYTHONPATH}}}}"
+
 python_candidates=()
 if [[ -n "${{BMATRIX_COMPARE_PYTHON:-}}" ]]; then
   python_candidates+=("${{BMATRIX_COMPARE_PYTHON}}")
 fi
-python_candidates+=(python3 python)
+
+# Do not trust only ``command -v python3``: the spack environment may put a
+# python-venv shim before the real Python installation. Enumerate every matching
+# interpreter available through PATH and validate imports before selecting one.
+IFS=':' read -r -a path_entries <<< "$PATH"
+for python_name in python3.11 python3 python; do
+  for path_entry in "${{path_entries[@]}}"; do
+    [[ -n "$path_entry" ]] || path_entry='.'
+    candidate="$path_entry/$python_name"
+    if [[ -x "$candidate" && ! -d "$candidate" ]]; then
+      python_candidates+=("$candidate")
+    fi
+  done
+done
 
 COMPARE_PYTHON=""
-for raw_candidate in "${{python_candidates[@]}}"; do
-  candidate=""
-  if [[ "$raw_candidate" == */* ]]; then
-    if [[ -x "$raw_candidate" ]]; then
-      candidate="$raw_candidate"
-    fi
-  else
-    candidate="$(command -v "$raw_candidate" 2>/dev/null || true)"
-  fi
-  [[ -n "$candidate" ]] || continue
+for candidate in "${{python_candidates[@]}}"; do
+  [[ -x "$candidate" ]] || continue
   if "$candidate" -c 'import numpy, netCDF4; import bmatrix.ab_hdiag' >/dev/null 2>&1; then
     COMPARE_PYTHON="$candidate"
     break
@@ -46,14 +55,7 @@ if [[ -z "$COMPARE_PYTHON" ]]; then
   echo "PATH=$PATH" >&2
   echo "PYTHONPATH=${{PYTHONPATH:-}}" >&2
   echo "BMATRIX_COMPARE_PYTHON=${{BMATRIX_COMPARE_PYTHON:-}}" >&2
-  for raw_candidate in "${{python_candidates[@]}}"; do
-    if [[ "$raw_candidate" == */* ]]; then
-      resolved="$raw_candidate"
-    else
-      resolved="$(command -v "$raw_candidate" 2>/dev/null || true)"
-    fi
-    echo "candidate=$raw_candidate resolved=${{resolved:-<not-found>}}" >&2
-  done
+  printf 'candidate=%s\n' "${{python_candidates[@]}}" >&2
   exit 2
 fi
 
@@ -114,7 +116,7 @@ def prepare_compare_job(
     )
     runtime_environment = {
         **spec.environment,
-        "PYTHONPATH": str(project_root / "src"),
+        "BMATRIX_PROJECT_SRC": str(project_root / "src"),
         "MONAN_JEDI_INSTALL_ROOT": install_root,
     }
     compare_python = os.environ.get("BMATRIX_COMPARE_PYTHON")
