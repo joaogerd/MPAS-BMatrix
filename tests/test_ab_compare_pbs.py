@@ -47,7 +47,7 @@ def test_compare_pbs_uses_one_cpu_preserves_spack_pythonpath_and_scans_all_path_
     assert str(config_path.resolve()) in text
     assert 'export PYTHONPATH="${BMATRIX_PROJECT_SRC}${PYTHONPATH:+:${PYTHONPATH}}"' in text
     assert "for python_name in python3.11 python3 python" in text
-    assert 'IFS=\':\' read -r -a path_entries <<< "$PATH"' in text
+    assert "IFS=':' read -r -a path_entries <<< \"$PATH\"" in text
     assert "import numpy, netCDF4" in text
     assert "import bmatrix.ab_hdiag" in text
     assert 'echo "COMPARE_PYTHON=$COMPARE_PYTHON"' in text
