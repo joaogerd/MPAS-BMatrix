@@ -23,7 +23,7 @@ def _script() -> Path:
 def _workspace(root: Path, bg: list[float], analysis: list[float], log: str) -> None:
     _write(root / "bg_so.nc", bg)
     _write(root / "an.2026-06-22_00.00.00.nc", analysis)
-    (root / "run_so.runlog").write_text(log)
+    (root / "run_SO.runlog").write_text(log)
 
 
 def test_so_increment_diagnostic_reports_increment_and_logs(tmp_path: Path) -> None:
@@ -54,6 +54,7 @@ def test_so_increment_diagnostic_reports_increment_and_logs(tmp_path: Path) -> N
     assert "INCREMENT variable=u" in result.stdout
     assert "relative_l2=" in result.stdout
     assert "=== SO convergence excerpt: A ===" in result.stdout
+    assert "run_SO.runlog" in result.stdout
     assert "A | DRPCG iteration 1" in result.stdout
     assert "B | DRPCG iteration 1" in result.stdout
 
