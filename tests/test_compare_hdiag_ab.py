@@ -43,12 +43,17 @@ def test_compare_product_recurses_groups_and_accepts_roundoff(tmp_path: Path) ->
 
     assert problems == []
     assert len(rows) == 1
-    assert rows[0].variable == "diagnostics/temperature"
-    assert rows[0].status == "PASS"
-    assert rows[0].max_abs > 0.0
+    row = rows[0]
+    assert row.variable == "diagnostics/temperature"
+    assert row.status == "PASS"
+    assert row.max_abs > 0.0
+    assert row.n_values == 2
+    assert row.fail_count == 0
+    assert row.fail_fraction == 0.0
+    assert row.max_scaled_error < 1.0
 
 
-def test_compare_product_rejects_scientific_difference(tmp_path: Path) -> None:
+def test_compare_product_rejects_scientific_difference_and_counts_elements(tmp_path: Path) -> None:
     module = _module()
     reference = tmp_path / "reference" / "mpas.cor_rh.nc"
     candidate = tmp_path / "candidate" / "mpas.cor_rh.nc"
@@ -63,8 +68,15 @@ def test_compare_product_rejects_scientific_difference(tmp_path: Path) -> None:
     )
 
     assert problems == []
-    assert rows[0].status == "FAIL"
-    assert rows[0].max_abs > 0.09
+    row = rows[0]
+    assert row.status == "FAIL"
+    assert row.max_abs > 0.09
+    assert row.fail_count == 1
+    assert row.fail_fraction == 0.5
+    assert row.max_scaled_error > 1.0
+    assert row.worst_ref == 2.0
+    assert row.worst_candidate == 2.1
+    assert row.worst_abs_delta > 0.09
 
 
 def test_resolve_product_accepts_hdiag_workspace_root(tmp_path: Path) -> None:
