@@ -26,8 +26,11 @@ class Result:
     fail_fraction: float
     ref_abs_max: float
     cand_abs_max: float
+    ref_rms: float
+    cand_rms: float
     max_abs: float
     rms: float
+    relative_rms: float
     max_rel: float
     max_scaled_error: float
     worst_ref: float
@@ -119,8 +122,11 @@ def _shape_mismatch(product: str, name: str, reference, candidate, ref_shape, ca
         fail_fraction=0.0,
         ref_abs_max=math.inf,
         cand_abs_max=math.inf,
+        ref_rms=math.inf,
+        cand_rms=math.inf,
         max_abs=math.inf,
         rms=math.inf,
+        relative_rms=math.inf,
         max_rel=math.inf,
         max_scaled_error=math.inf,
         worst_ref=math.nan,
@@ -181,6 +187,12 @@ def _compare_variable(
         rms = float(np.sqrt(np.mean(delta * delta)))
         ref_abs_max = float(np.max(np.abs(ref_values)))
         cand_abs_max = float(np.max(np.abs(cand_values)))
+        ref_rms = float(np.sqrt(np.mean(ref_values * ref_values)))
+        cand_rms = float(np.sqrt(np.mean(cand_values * cand_values)))
+        if ref_rms > 0.0:
+            relative_rms = rms / ref_rms
+        else:
+            relative_rms = 0.0 if rms == 0.0 else math.inf
 
         rel_mask = np.abs(ref_values) > atol
         if np.any(rel_mask):
@@ -202,8 +214,11 @@ def _compare_variable(
     else:
         ref_abs_max = 0.0
         cand_abs_max = 0.0
+        ref_rms = 0.0
+        cand_rms = 0.0
         max_abs = 0.0
         rms = 0.0
+        relative_rms = 0.0
         max_rel = 0.0
         max_scaled_error = 0.0
         worst_ref = math.nan
@@ -227,8 +242,11 @@ def _compare_variable(
         fail_fraction=fail_fraction,
         ref_abs_max=ref_abs_max,
         cand_abs_max=cand_abs_max,
+        ref_rms=ref_rms,
+        cand_rms=cand_rms,
         max_abs=max_abs,
         rms=rms,
+        relative_rms=relative_rms,
         max_rel=max_rel,
         max_scaled_error=max_scaled_error,
         worst_ref=worst_ref,
@@ -293,8 +311,11 @@ def _write(rows: list[Result], stream) -> None:
             "fail_fraction",
             "ref_abs_max",
             "cand_abs_max",
+            "ref_rms",
+            "cand_rms",
             "max_abs",
             "rms",
+            "relative_rms",
             "max_rel",
             "max_scaled_error",
             "worst_ref",
@@ -318,8 +339,11 @@ def _write(rows: list[Result], stream) -> None:
                 f"{row.fail_fraction:.17g}",
                 f"{row.ref_abs_max:.17g}",
                 f"{row.cand_abs_max:.17g}",
+                f"{row.ref_rms:.17g}",
+                f"{row.cand_rms:.17g}",
                 f"{row.max_abs:.17g}",
                 f"{row.rms:.17g}",
+                f"{row.relative_rms:.17g}",
                 f"{row.max_rel:.17g}",
                 f"{row.max_scaled_error:.17g}",
                 f"{row.worst_ref:.17g}",
