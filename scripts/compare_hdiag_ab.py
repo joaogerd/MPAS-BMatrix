@@ -19,10 +19,20 @@ PRODUCTS = ("mpas.stddev.nc", "mpas.cor_rh.nc", "mpas.cor_rv.nc")
 class Result:
     product: str
     variable: str
+    dtype: str
     shape: str
+    n_values: int
+    fail_count: int
+    fail_fraction: float
+    ref_abs_max: float
+    cand_abs_max: float
     max_abs: float
     rms: float
     max_rel: float
+    max_scaled_error: float
+    worst_ref: float
+    worst_candidate: float
+    worst_abs_delta: float
     finite_mismatch: int
     nan_mismatch: int
     inf_mismatch: int
@@ -47,13 +57,13 @@ def _parser() -> argparse.ArgumentParser:
         "--rtol",
         type=float,
         default=1.0e-6,
-        help="relative tolerance for np.allclose (default: 1e-6)",
+        help="relative tolerance for element-wise comparison (default: 1e-6)",
     )
     parser.add_argument(
         "--atol",
         type=float,
         default=1.0e-8,
-        help="absolute tolerance for np.allclose (default: 1e-8)",
+        help="absolute tolerance for element-wise comparison (default: 1e-8)",
     )
     parser.add_argument("--output", type=Path, help="optional CSV output path")
     return parser
@@ -92,19 +102,44 @@ def _as_float_array(variable) -> np.ndarray | None:
     return np.asarray(values, dtype=np.float64)
 
 
-def _shape_mismatch(product: str, name: str, ref_shape, cand_shape) -> Result:
+def _dtype_label(reference, candidate) -> str:
+    ref_dtype = str(np.dtype(reference.dtype))
+    cand_dtype = str(np.dtype(candidate.dtype))
+    return ref_dtype if ref_dtype == cand_dtype else f"{ref_dtype} != {cand_dtype}"
+
+
+def _shape_mismatch(product: str, name: str, reference, candidate, ref_shape, cand_shape) -> Result:
     return Result(
         product=product,
         variable=name,
+        dtype=_dtype_label(reference, candidate),
         shape=f"{ref_shape} != {cand_shape}",
+        n_values=int(np.prod(ref_shape, dtype=np.int64)) if ref_shape else 1,
+        fail_count=0,
+        fail_fraction=0.0,
+        ref_abs_max=math.inf,
+        cand_abs_max=math.inf,
         max_abs=math.inf,
         rms=math.inf,
         max_rel=math.inf,
+        max_scaled_error=math.inf,
+        worst_ref=math.nan,
+        worst_candidate=math.nan,
+        worst_abs_delta=math.inf,
         finite_mismatch=0,
         nan_mismatch=0,
         inf_mismatch=0,
         status="SHAPE_MISMATCH",
     )
+
+
+def _scaled_error(abs_delta: np.ndarray, tolerance: np.ndarray) -> np.ndarray:
+    scaled = np.empty_like(abs_delta, dtype=np.float64)
+    positive = tolerance > 0.0
+    scaled[positive] = abs_delta[positive] / tolerance[positive]
+    zero_tolerance = ~positive
+    scaled[zero_tolerance] = np.where(abs_delta[zero_tolerance] == 0.0, 0.0, np.inf)
+    return scaled
 
 
 def _compare_variable(
@@ -121,7 +156,7 @@ def _compare_variable(
     if ref is None or cand is None:
         return None
     if ref.shape != cand.shape:
-        return _shape_mismatch(product, name, ref.shape, cand.shape)
+        return _shape_mismatch(product, name, reference, candidate, ref.shape, cand.shape)
 
     ref_nan = np.isnan(ref)
     cand_nan = np.isnan(cand)
@@ -135,33 +170,47 @@ def _compare_variable(
     cand_finite = np.isfinite(cand)
     finite_mismatch = int(np.count_nonzero(ref_finite != cand_finite))
     both = ref_finite & cand_finite
+    n_values = int(ref.size)
 
     if np.any(both):
         ref_values = ref[both]
         cand_values = cand[both]
         delta = cand_values - ref_values
-        max_abs = float(np.max(np.abs(delta)))
+        abs_delta = np.abs(delta)
+        max_abs = float(np.max(abs_delta))
         rms = float(np.sqrt(np.mean(delta * delta)))
+        ref_abs_max = float(np.max(np.abs(ref_values)))
+        cand_abs_max = float(np.max(np.abs(cand_values)))
+
         rel_mask = np.abs(ref_values) > atol
         if np.any(rel_mask):
-            max_rel = float(
-                np.max(np.abs(delta[rel_mask]) / np.abs(ref_values[rel_mask]))
-            )
+            max_rel = float(np.max(abs_delta[rel_mask] / np.abs(ref_values[rel_mask])))
         else:
             max_rel = 0.0
-        close = bool(
-            np.allclose(
-                cand_values,
-                ref_values,
-                rtol=rtol,
-                atol=atol,
-                equal_nan=True,
-            )
-        )
+
+        tolerance = atol + rtol * np.abs(ref_values)
+        fail_mask = abs_delta > tolerance
+        fail_count = int(np.count_nonzero(fail_mask))
+        fail_fraction = fail_count / n_values if n_values else 0.0
+        scaled = _scaled_error(abs_delta, tolerance)
+        worst_index = int(np.argmax(scaled))
+        max_scaled_error = float(scaled[worst_index])
+        worst_ref = float(ref_values[worst_index])
+        worst_candidate = float(cand_values[worst_index])
+        worst_abs_delta = float(abs_delta[worst_index])
+        close = fail_count == 0
     else:
+        ref_abs_max = 0.0
+        cand_abs_max = 0.0
         max_abs = 0.0
         rms = 0.0
         max_rel = 0.0
+        max_scaled_error = 0.0
+        worst_ref = math.nan
+        worst_candidate = math.nan
+        worst_abs_delta = 0.0
+        fail_count = 0
+        fail_fraction = 0.0
         close = True
 
     status = "PASS"
@@ -171,10 +220,20 @@ def _compare_variable(
     return Result(
         product=product,
         variable=name,
+        dtype=_dtype_label(reference, candidate),
         shape=str(ref.shape),
+        n_values=n_values,
+        fail_count=fail_count,
+        fail_fraction=fail_fraction,
+        ref_abs_max=ref_abs_max,
+        cand_abs_max=cand_abs_max,
         max_abs=max_abs,
         rms=rms,
         max_rel=max_rel,
+        max_scaled_error=max_scaled_error,
+        worst_ref=worst_ref,
+        worst_candidate=worst_candidate,
+        worst_abs_delta=worst_abs_delta,
         finite_mismatch=finite_mismatch,
         nan_mismatch=nan_mismatch,
         inf_mismatch=inf_mismatch,
@@ -227,10 +286,20 @@ def _write(rows: list[Result], stream) -> None:
         [
             "product",
             "variable",
+            "dtype",
             "shape",
+            "n_values",
+            "fail_count",
+            "fail_fraction",
+            "ref_abs_max",
+            "cand_abs_max",
             "max_abs",
             "rms",
             "max_rel",
+            "max_scaled_error",
+            "worst_ref",
+            "worst_candidate",
+            "worst_abs_delta",
             "finite_mismatch",
             "nan_mismatch",
             "inf_mismatch",
@@ -242,10 +311,20 @@ def _write(rows: list[Result], stream) -> None:
             [
                 row.product,
                 row.variable,
+                row.dtype,
                 row.shape,
+                row.n_values,
+                row.fail_count,
+                f"{row.fail_fraction:.17g}",
+                f"{row.ref_abs_max:.17g}",
+                f"{row.cand_abs_max:.17g}",
                 f"{row.max_abs:.17g}",
                 f"{row.rms:.17g}",
                 f"{row.max_rel:.17g}",
+                f"{row.max_scaled_error:.17g}",
+                f"{row.worst_ref:.17g}",
+                f"{row.worst_candidate:.17g}",
+                f"{row.worst_abs_delta:.17g}",
                 row.finite_mismatch,
                 row.nan_mismatch,
                 row.inf_mismatch,
