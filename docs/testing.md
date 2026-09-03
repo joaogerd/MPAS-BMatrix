@@ -106,8 +106,10 @@ Examples:
 
 ```text
 Testing HDIAG logic:
-  create synthetic samplesUnbalanced files and minimal VBAL metadata;
-  do not run BFLOW, VBAL or UNBALANCE.
+  create synthetic original samples and minimal VBAL metadata/products;
+  verify that the rendered HDIAG YAML reads samples/ and includes
+  BUMP_VerticalBalance as an outer block;
+  do not run BFLOW or VBAL.
 
 Testing NICAS validation:
   create synthetic mpas.cor_rh.nc, mpas.cor_rv.nc and mpas.stddev.nc;
@@ -127,13 +129,16 @@ test.
 | Stage | Unit/integration focus |
 | --- | --- |
 | BFLOW | Manifest parsing, product paths, weight path conventions, variable derivation helpers. |
-| VBAL | Sample staging, generated YAML structure, product validation, CDF5 checks. |
-| UNBALANCE | Input member selection, output naming, validation of `samplesUnbalanced`. |
-| HDIAG | Distance/sampling configuration, expected output names, validator failures. |
+| VBAL | Sample staging, generated YAML structure, product validation, CDF5 checks, absence of `output ensemble`. |
+| HDIAG | Original-sample input, in-memory `BUMP_VerticalBalance` outer block, distance/sampling configuration, expected output names, validator failures. |
 | NICAS | Per-variable product discovery, merge outputs, 3D/2D grid split invariants. |
 | SO | Background enrichment requirements, aliases, expected obsout/an outputs, log success detection. |
 | DIRAC | Maintained `dirLats`/`dirLons` + singular selector contract, output validation. |
 | PLOTS | Product discovery, figure generation with and without optional map dependencies. |
+
+The retained `unbalance_core` has legacy unit coverage only so the previous
+materialized path can be used for controlled A/B comparisons. It is not part of
+the production stage-order tests.
 
 ## 6. Testing generated YAML
 
@@ -143,8 +148,12 @@ keys without snapshotting irrelevant formatting.
 Good checks:
 
 ```text
+- VBAL does not request background error.output ensemble;
+- HDIAG reads ../samples rather than samplesUnbalanced;
+- HDIAG includes BUMP_VerticalBalance as an outer block;
+- the VBAL read enables local sampling and vertical-balance coefficients;
 - expected SABER blocks are present;
-- active variables use canonical names;
+- active variables use canonical names where required;
 - aliases map canonical names to file names;
 - Control2Analysis appears after the B blocks;
 - NICAS reads split 3D and 2D controls where required;
@@ -173,14 +182,13 @@ For each validator, include tests for:
 
 Use JACI end-to-end checks for changes that affect scientific execution.
 
-Recommended sequence:
+Recommended production sequence from an existing BFLOW workspace:
 
 ```bash
-# From an existing BFLOW workspace.
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
-  --from-stage unbalance \
+  --from-stage vbal \
   --to-stage hdiag \
   --clean \
   --poll-seconds 30
@@ -193,6 +201,11 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --clean \
   --poll-seconds 30
 ```
+
+For this migration, also execute the controlled A/B comparison documented in
+[`in-memory-vbal-hdiag.md`](in-memory-vbal-hdiag.md). The old
+`UNBALANCE -> HDIAG` sequence is a reference test only and is not invoked through
+`bmatrix.pipeline.STAGES`.
 
 For documentation-only changes, this full smoke is not required. The standard
 local gate is sufficient.
@@ -207,7 +220,8 @@ Before submitting a PR, record:
 - whether scientific YAML changed;
 - which stage(s) are affected;
 - required rebuild point;
-- documentation updated.
+- documentation updated;
+- A/B result when changing the VBAL/HDIAG scientific path.
 ```
 
 For documentation-only PRs, state explicitly:

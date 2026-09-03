@@ -32,7 +32,7 @@ export STACK_ROOT=/path/to/spack-stack
 ```
 
 You do **not** need to export `MONAN_JEDI_SOURCE` or
-`MONAN_JEDI_UNBALANCE_EXE` for the normal configuration.
+`MONAN_JEDI_UNBALANCE_EXE` for the production configuration.
 
 Compatibility note: old scripts exporting `MONAN_JEDI_INSTALL` still work when
 `MONAN_JEDI_INSTALL_ROOT` is absent.
@@ -47,15 +47,8 @@ export CONFIG=configs/jaci-x1.10242.yaml
 PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix check-config --config "$CONFIG"
 ```
 
-Confirm that the resolved configuration points to:
-
-```text
-$MONAN_JEDI_INSTALL_ROOT/bin/...
-$MONAN_JEDI_INSTALL_ROOT/share/MPAS/...
-$MONAN_JEDI_INSTALL_ROOT/share/monan-jedi/...
-```
-
-and not to a MONAN-JEDI source/work tree.
+Confirm that the resolved configuration points to the public MONAN-JEDI install
+and not to a source/work tree.
 
 ## 4. Run from a `mpaswf` manifest
 
@@ -85,6 +78,12 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --dry-run
 ```
 
+The plan must follow:
+
+```text
+bflow -> vbal -> hdiag -> nicas -> so -> dirac -> plots
+```
+
 ## 5. Resume from an existing BFLOW workspace
 
 ```bash
@@ -99,11 +98,15 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --poll-seconds 30
 ```
 
-Valid stages:
+Valid production stages:
 
 ```text
-bflow, vbal, unbalance, hdiag, nicas, so, dirac, plots
+bflow, vbal, hdiag, nicas, so, dirac, plots
 ```
+
+HDIAG reads the original `samples/PTB_f48mf24_*.nc` and applies inverse VBAL in
+memory. `samplesUnbalanced` and the explicit UNBALANCE executable are not part of
+the production run.
 
 ## 6. Development checks
 
@@ -119,4 +122,5 @@ python -m ruff check src/bmatrix tests
 git diff --check
 ```
 
-See [configuration.md](configuration.md) for the ownership of each setting.
+See [configuration.md](configuration.md) for the ownership of each setting and
+[in-memory-vbal-hdiag.md](in-memory-vbal-hdiag.md) for the migration A/B check.

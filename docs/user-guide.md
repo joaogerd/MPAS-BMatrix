@@ -15,7 +15,7 @@ For scientific theory, code architecture and extension rules, read:
 The complete operational chain is sequential:
 
 ```text
-mpaswf -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
+mpaswf -> BFLOW -> VBAL -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
 `mpaswf` is an external upstream workflow. It owns GFS/WPS, MPAS initialization,
@@ -25,6 +25,11 @@ MPAS f024/f048 forecasts and the same-valid-time forecast-pair manifest.
 and diagnostics. The order is critical: a stage consumes products from earlier
 stages, and a configuration change invalidates that stage and all downstream
 products.
+
+VBAL calibrates the balance coefficients. HDIAG then rereads the original NMC
+perturbations and applies the inverse `BUMP_VerticalBalance` transform in memory
+before computing BUMP_NICAS diagnostics. The normal workflow therefore does not
+write `samplesUnbalanced`.
 
 ## 2. Clone and install
 
@@ -76,6 +81,10 @@ and `geovars.yaml` / `keptvars.yaml` from
 `share/monan-jedi/mpas-jedi/namelists/`. A MONAN-JEDI source checkout and a
 separate `MONAN_JEDI_UNBALANCE_EXE` are not required for normal use.
 
+The historical `unbalance_core` remains only for controlled A/B validation and
+may still use `mpasjedi_unbalance_ensemble.x`; it is not part of the production
+pipeline.
+
 For backward compatibility, `MONAN_JEDI_INSTALL` is still accepted when the
 canonical `MONAN_JEDI_INSTALL_ROOT` variable is not set.
 
@@ -103,7 +112,7 @@ configs/bmatrix-x1.10242.yaml
   short scientific-contract aggregator
 
 configs/bmatrix/x1.10242/*.yaml
-  one documented fragment per scientific stage
+  documented scientific fragments
 ```
 
 Set and inspect the runnable configuration:
@@ -204,10 +213,10 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
   --stage hdiag
 ```
 
-Valid stage names are:
+Valid production stage names are:
 
 ```text
-bflow, vbal, unbalance, hdiag, nicas, so, dirac, plots
+bflow, vbal, hdiag, nicas, so, dirac, plots
 ```
 
 ## 7. Stage-by-stage product checks
@@ -248,33 +257,18 @@ VBAL/mpas_vbal.nc
 VBAL/mpas_sampling.nc
 VBAL/mpas_vbal_local_*
 VBAL/mpas_sampling_local_*
+samples/PTB_f48mf24_*.nc
 ```
 
 **Accept when:** the PBS job succeeds and all global/local products exist for the
-configured MPI ranks.
-
-### UNBALANCE
-
-**Input:** VBAL products and centered perturbation samples.
-
-**Purpose:** apply K2^-1 and explicitly write the unbalanced ensemble used by
-HDIAG.
-
-**Main outputs:**
-
-```text
-samplesUnbalanced/PTB_f48mf24_*.nc
-```
-
-**Accept when:** the expected member count exists, files are readable/CDF5 when
-required and all declared controls are present.
+configured MPI ranks. VBAL does not need to write an output ensemble.
 
 ### HDIAG
 
-**Input:** `samplesUnbalanced`.
+**Input:** the original staged NMC perturbations plus VBAL/sampling products.
 
-**Purpose:** estimate standard deviations and horizontal/vertical correlation
-scales.
+**Purpose:** apply `K2^-1` in memory through `BUMP_VerticalBalance` and then
+estimate standard deviations and horizontal/vertical correlation scales.
 
 **Main outputs:**
 
@@ -284,8 +278,11 @@ HDIAG/mpas.cor_rh.nc
 HDIAG/mpas.cor_rv.nc
 ```
 
-**Accept when:** all products exist, dimensions are consistent and fields are not
-entirely missing or trivially zero.
+**Accept when:** all products exist, dimensions are consistent, fields are not
+entirely missing or trivially zero, and the HDIAG YAML/log confirms that
+`BUMP_VerticalBalance` is being read before BUMP_NICAS calibration.
+
+No `samplesUnbalanced` files are expected in the production workflow.
 
 ### NICAS
 
@@ -394,7 +391,16 @@ DIRAC point/variable changed
 
 Never reuse downstream products after changing an upstream scientific contract.
 
-## 9. Troubleshooting sequence
+## 9. A/B migration validation
+
+While the new in-memory path is being validated, the historical
+`unbalance_core` can be used explicitly for a controlled comparison. It is not
+available through the production `--from-stage/--to-stage` sequence.
+
+See [`in-memory-vbal-hdiag.md`](in-memory-vbal-hdiag.md) for the exact A/B
+procedure and acceptance criteria.
+
+## 10. Troubleshooting sequence
 
 When a stage fails:
 
@@ -409,7 +415,7 @@ When a stage fails:
 See [`operations.md`](operations.md) for known errors such as BUMP universe-radius
 limits, NICAS `nl0` mismatches, alias problems and MPAS stream-field errors.
 
-## 10. Reproducibility record
+## 11. Reproducibility record
 
 For each test or production run, record:
 

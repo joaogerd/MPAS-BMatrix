@@ -130,6 +130,6 @@ def test_unbalance_validation_rejects_non_cdf5(tmp_path: Path, monkeypatch: pyte
     assert all("esperado cdf5" in error for error in errors)
 
 
-def test_hdiag_prepare_requires_valid_unbalance_manifest(tmp_path: Path) -> None:
+def test_hdiag_prepare_requires_valid_vbal_manifest(tmp_path: Path) -> None:
     with pytest.raises(Exception, match="Manifesto"):
-        prepare_hdiag(_config(tmp_path), tmp_path / "missing-unbalance", workspace=tmp_path / "hdiag")
+        prepare_hdiag(_config(tmp_path), tmp_path / "missing-vbal", workspace=tmp_path / "hdiag")

@@ -2,18 +2,17 @@
 
 ## Stage validation
 
-Each stage has a `validate` path through the public CLI:
+Each production stage has a `validate` path through the public CLI:
 
 ```bash
 mpas-bmatrix validate --config "$CONFIG" --bflow-workspace "$BFLOW" --stage <stage>
 ```
 
-Stages:
+Production stages:
 
 ```text
 bflow
 vbal
-unbalance
 hdiag
 nicas
 so
@@ -22,25 +21,38 @@ plots
 ```
 
 The build orchestration validates each completed stage before launching the next
-dependent stage.
+dependent stage. `unbalance_core` is retained only for migration A/B testing and
+is not accepted as a production `--stage` value.
 
 ## Provenance
 
 Prepared or completed stages write `stage-manifest.json` where available. These
-manifests are the operational provenance record and should be treated as more
-reliable than ad hoc README files inside workspaces.
+manifests are the operational provenance record. Keep audit material under a
+durable work directory rather than `/tmp`.
 
-Record audits under a durable work directory, for example:
+## VBAL -> HDIAG operational check
 
-```bash
-AUDIT_DIR="$WORK_ROOT/audits"
-mkdir -p "$AUDIT_DIR"
+The production HDIAG workspace should contain links equivalent to:
+
+```text
+samples -> <VBAL workspace>/samples
+vbal    -> <VBAL workspace>/VBAL
 ```
 
-Do not rely on `/tmp` for persistent reports because it may be inaccessible from
-other login nodes and may be removed.
+The generated `run_hdiag.yaml` must read `../samples/...` and contain a
+`BUMP_VerticalBalance` outer block with `read local sampling: true` and
+`read vertical balance: true` before BUMP_NICAS calibration.
+
+No `samplesUnbalanced` files are expected in a production run.
 
 ## Common failures
+
+### Missing VBAL products while preparing HDIAG
+
+Cause: HDIAG now depends directly on a completed VBAL workspace.
+
+Check that `mpas_vbal.nc`, `mpas_sampling.nc`, local VBAL/sampling files and the
+staged `samples/PTB_f48mf24_*.nc` exist before preparing HDIAG.
 
 ### `horizontal distance larger than universe radius`
 
@@ -62,40 +74,38 @@ distance class width: 1000000.0
 ### `wrong size for dimension nl0`
 
 Cause: local NICAS groups with different vertical dimensionality are read as one
-grid. The 2D `surface_pressure` group has `nl0 = 1`, while the 3D controls use
-`nl0 = 55`.
-
-Fix: keep `BUMP_NICAS.read.grids` split into 3D and 2D groups.
+grid. Keep `BUMP_NICAS.read.grids` split into 3D and 2D groups.
 
 ### `Jb is NaN`
 
 Past cause: missing or incomplete aliases and mixed old/new variable names in
-the B application YAML.
-
-Fix: keep canonical control names in `active variables`,
-`Control2Analysis.input variables` and `vertical balance.vbal`; keep aliases for
-NetCDF product reads.
+the B application YAML. Keep canonical control names in application slots and
+aliases for NetCDF product reads.
 
 ### `signal 11` after `CostFunction::addIncrement`
 
-Past cause: `Control2Analysis.output variables` included canonical analysis
-variables that were not present in the background/State.
-
-Fix: ensure `background.state variables` includes the canonical analysis output
-variables, especially:
-
-```text
-water_vapor_mixing_ratio_wrt_moist_air
-```
-
-This field may be copied from `spechum` or derived from `qv / (1 + qv)`.
+Ensure `background.state variables` includes the canonical analysis output
+variables, especially `water_vapor_mixing_ratio_wrt_moist_air`.
 
 ### `ERROR: Requested field eastward_wind not available`
 
-Cause: canonical JEDI names were written to an MPAS stream list.
+Cause: canonical JEDI names were written to an MPAS stream list. Reuse compatible
+MPAS-native stream files instead.
 
-Fix: do not write canonical names to `stream_list.atmosphere.analysis`. Reuse the
-MPAS-native stream files from the compatible HDIAG/static setup.
+## A/B migration validation
+
+For this branch, compare the retained materialized reference path with the
+production in-memory path before merge:
+
+```bash
+python scripts/compare_hdiag_ab.py \
+  /path/to/reference-hdiag \
+  /path/to/in-memory-hdiag \
+  --output hdiag-ab-comparison.csv
+```
+
+See [`in-memory-vbal-hdiag.md`](in-memory-vbal-hdiag.md) for the complete
+HDIAG/NICAS/DIRAC/SO acceptance procedure.
 
 ## CDF5 checks
 
@@ -119,18 +129,6 @@ List final reusable products:
 mpas-bmatrix products --config "$CONFIG" --bflow-workspace "$BFLOW"
 ```
 
-Inspect important outputs:
-
-```bash
-SO=/path/to/so/workspace
-DIRAC=/path/to/dirac/workspace
-
-ncdump -h "$SO/an.YYYY-MM-DD_HH.MM.SS.nc" | \
-  egrep 'uReconstructZonal|uReconstructMeridional|theta|qv|surface_pressure'
-
-ncdump -k "$DIRAC/mpas.dirac.nc"
-```
-
 ## Merge gate
 
 Before merging:
@@ -138,12 +136,12 @@ Before merging:
 ```bash
 cd "$BMATRIX_ROOT"
 mkdir -p .pytest-tmp
-
 TMPDIR="$BMATRIX_ROOT/.pytest-tmp" \
 PYTHONPATH="src:${PYTHONPATH:-}" \
 python -m pytest -p no:cacheprovider -q
-
 python -m ruff check src/bmatrix tests
-
 git diff --check
 ```
+
+For the in-memory VBAL migration, the numerical A/B and JACI end-to-end checks
+are additional mandatory gates.

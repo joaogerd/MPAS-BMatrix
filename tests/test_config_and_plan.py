@@ -209,12 +209,13 @@ def test_plan_from_manifest_is_side_effect_free(tmp_path: Path) -> None:
     )
     config = load_config(config_path)
     result = plan(config, BuildRequest(manifest=manifest, to_stage="nicas"))
-    assert result.stages == ("bflow", "vbal", "unbalance", "hdiag", "nicas")
+    assert result.stages == ("bflow", "vbal", "hdiag", "nicas")
     assert result.paths.bflow.name.startswith("np4_2026061000")
+    assert result.paths.hdiag.parent.name == "hdiag"
     assert not result.paths.bflow.exists()
 
 
-def test_stage_order_includes_unbalance_between_vbal_and_hdiag(tmp_path: Path) -> None:
+def test_stage_order_connects_vbal_directly_to_hdiag(tmp_path: Path) -> None:
     data = {
         "project": {"work_root": str(tmp_path / "work"), "project_root": str(tmp_path)},
         "mesh": {"name": "x1.test", "grid": str(tmp_path / "mesh.nc"), "nproc": 4},
@@ -235,8 +236,13 @@ def test_stage_order_includes_unbalance_between_vbal_and_hdiag(tmp_path: Path) -
         "2026-06-10_00:00:00\t/a/f048.nc\t/a/f024.nc\n"
     )
 
-    result = plan(load_config(config_path), BuildRequest(manifest=manifest, from_stage="unbalance", to_stage="hdiag"))
+    result = plan(load_config(config_path), BuildRequest(manifest=manifest, from_stage="vbal", to_stage="hdiag"))
 
-    assert result.stages == ("unbalance", "hdiag")
-    assert result.paths.unbalance.parent.name == "unbalance"
+    assert result.stages == ("vbal", "hdiag")
+    assert result.paths.vbal.parent.name == "vbal"
     assert result.paths.hdiag.parent.name == "hdiag"
+
+
+def test_unbalance_is_not_a_production_pipeline_stage() -> None:
+    with pytest.raises(ConfigurationError, match="Etapas válidas"):
+        BuildRequest(from_stage="unbalance", to_stage="hdiag")  # type: ignore[arg-type]

@@ -5,9 +5,10 @@ from pathlib import Path
 from ..shell import require_file, symlink_force
 
 
-def link_hdiag_inputs(unbalance_root: Path, vbal_root: Path, workspace: Path, run_dir: Path) -> None:
+def link_hdiag_inputs(vbal_root: Path, workspace: Path, run_dir: Path) -> None:
+    """Link raw training samples and calibrated VBAL products for in-memory inversion."""
     vbal_run = vbal_root / "VBAL"
-    symlink_force(unbalance_root / "samplesUnbalanced", workspace / "samplesUnbalanced")
+    symlink_force(vbal_root / "samples", workspace / "samples")
     symlink_force(vbal_run, workspace / "vbal")
 
     required = ["bg.nc", "namelist.atmosphere_240km", "streams.atmosphere_240km"]

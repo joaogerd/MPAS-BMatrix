@@ -1,7 +1,7 @@
 # Scientific contract
 
 This document records the scientific and naming contracts that must be preserved
-when maintaining the `main` branch.
+when maintaining the production workflow.
 
 ## Control variables
 
@@ -17,7 +17,7 @@ The static B-matrix is calibrated in control space:
 
 The canonical names are used by the current MPAS-JEDI/SABER/OOPS code. The file
 names are the names present in the NetCDF products produced by BFLOW, VBAL,
-UNBALANCE, HDIAG and NICAS.
+HDIAG and NICAS.
 
 ## Aliases
 
@@ -114,21 +114,43 @@ model:
 For local NICAS reads in SO/DIRAC, keep `read.grids` split into separate 3D and
 2D groups.
 
-## UNBALANCE
+## VBAL and HDIAG training contract
 
-The tutorial-style expectation is that HDIAG consumes unbalanced perturbations.
-In this implementation, that contract is made explicit:
+HDIAG must operate on perturbations after removal of the balanced component.
+The production implementation follows the current NCAR pattern without
+materializing those transformed members:
 
 ```text
-VBAL estimates K2
-UNBALANCE applies K2^-1
-HDIAG reads samplesUnbalanced
+VBAL estimates K2 and writes VBAL/sampling products
+HDIAG reads the original centered NMC perturbations
+HDIAG applies K2^-1 in memory through BUMP_VerticalBalance
+BUMP_NICAS calibrates variance and correlation diagnostics from that result
 ```
 
-Do not rely on `background error.output ensemble` in
-`mpasjedi_error_covariance_toolbox.x` to write the final unbalanced ensemble
-members when using iterative ensemble loading. The public and reproducible
-contract in this repository is the explicit UNBALANCE stage.
+The HDIAG SABER chain therefore contains:
+
+```yaml
+saber central block:
+  saber block name: BUMP_NICAS
+
+saber outer blocks:
+- saber block name: BUMP_VerticalBalance
+  read:
+    drivers:
+      read local sampling: true
+      read vertical balance: true
+```
+
+The original sample files remain under `samples/PTB_f48mf24_*.nc`. There is no
+production requirement to create `samplesUnbalanced/PTB_f48mf24_*.nc`, and VBAL
+must not depend on the removed `background error.output ensemble` behavior.
+
+The retained `unbalance_core` implements the older explicit
+`K2^-1 -> NetCDF -> HDIAG` path only for controlled regression comparisons. It
+is not part of `bmatrix.pipeline.STAGES`.
+
+See [`in-memory-vbal-hdiag.md`](in-memory-vbal-hdiag.md) for the A/B validation
+procedure.
 
 ## DIRAC
 

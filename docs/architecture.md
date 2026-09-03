@@ -16,6 +16,9 @@ Users who only need to run the workflow should start with
    maintained separately but resolved into one mapping before execution.
 6. **No hidden upstream workflow:** GFS/WPS/MPAS forecast generation belongs to
    `mpaswf`; this repository starts at BFLOW.
+7. **Avoid unnecessary materialization:** transforms consumed immediately by the
+   next SABER block should remain in memory when the upstream architecture
+   supports that path.
 
 ## 2. Stage graph
 
@@ -24,12 +27,15 @@ External:
   mpaswf -> forecast-pair manifest
 
 MPAS-BMatrix:
-  BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
+  BFLOW -> VBAL -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
 The ordered stage tuple is defined in `src/bmatrix/pipeline.py`. The same module
 implements `--from-stage`, `--to-stage`, deterministic workspace resolution and
 sequential validation.
+
+The historical `UNBALANCE` implementation is not in this graph. Its package is
+retained temporarily for A/B regression validation only.
 
 ## 3. Public interface
 
@@ -74,7 +80,7 @@ configs/bmatrix-x1.10242.yaml
   scientific-contract aggregator
         ↓ include
 configs/bmatrix/x1.10242/*.yaml
-  control registry and one fragment per stage
+  control registry and stage-specific fragments
 ```
 
 Implementation:
@@ -149,21 +155,29 @@ src/bmatrix/vbal_core/
 ```
 
 Stages BFLOW perturbations, static MPAS files and renders/submits/validates VBAL
-calibration.
-
-```text
-src/bmatrix/unbalance_core/
-```
-
-Applies K2^-1 to centered members and materializes `samplesUnbalanced` for
-HDIAG. The executable is resolved from platform/build configuration.
+calibration. VBAL produces balance and sampling products only; it does not write
+an output ensemble.
 
 ```text
 src/bmatrix/hdiag_core/
 ```
 
 Renders/submits/validates standard-deviation and correlation diagnostics. It
-also validates the configured distance-bin extent before submission.
+links the original VBAL-staged perturbations and VBAL products into the HDIAG
+workspace. The rendered SABER chain reads `BUMP_VerticalBalance` as an outer
+block, so the inverse balance transform is applied in memory before BUMP_NICAS
+calibration. It also validates the configured distance-bin extent before
+submission.
+
+```text
+src/bmatrix/unbalance_core/
+```
+
+Legacy diagnostic implementation of the previous explicit path. It applies
+`K2^-1` and materializes `samplesUnbalanced` using
+`mpasjedi_unbalance_ensemble.x`. It is deliberately excluded from
+`bmatrix.pipeline.STAGES` and must not be used by the normal production build.
+It remains only until the A/B migration validation is complete.
 
 ```text
 src/bmatrix/nicas_core/
@@ -215,14 +229,16 @@ BFLOW -> VBAL
   output/*/PTB_f48mf24.nc
   output/*/FULL_f24.nc
 
-VBAL -> UNBALANCE
+VBAL -> HDIAG
+  staged samples/PTB_f48mf24_*.nc
   mpas_vbal.nc
   mpas_sampling.nc
   local VBAL/sampling products
-  staged samples
 
-UNBALANCE -> HDIAG
-  samplesUnbalanced/PTB_f48mf24_*.nc
+HDIAG internal SABER chain
+  original sample
+    -> inverse BUMP_VerticalBalance in memory
+    -> BUMP_NICAS diagnostics
 
 HDIAG -> NICAS
   mpas.stddev.nc
@@ -237,7 +253,11 @@ SO/DIRAC/other products -> PLOTS
   completed validation and diagnostic products
 ```
 
-See [`stage-products.md`](stage-products.md) for user-facing acceptance criteria.
+There is no production `samplesUnbalanced` product interface.
+
+See [`stage-products.md`](stage-products.md) for user-facing acceptance criteria
+and [`in-memory-vbal-hdiag.md`](in-memory-vbal-hdiag.md) for the migration/A-B
+validation contract.
 
 ## 9. Generated YAML and PBS
 

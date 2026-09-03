@@ -4,10 +4,10 @@ This document is the user-facing acceptance matrix for the sequential
 `MPAS-BMatrix` workflow. Use it to decide whether a stage produced valid outputs
 before running the next stage.
 
-The full order is:
+The full production order is:
 
 ```text
-mpaswf -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
+mpaswf -> BFLOW -> VBAL -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 ```
 
 `mpaswf` is external. All stages from BFLOW onward belong to this repository.
@@ -19,8 +19,7 @@ mpaswf -> BFLOW -> VBAL -> UNBALANCE -> HDIAG -> NICAS -> SO -> DIRAC -> PLOTS
 | `mpaswf` | GFS/WPS inputs, MPAS mesh/static files, mpaswf config | `mpas-forecast-manifest.tsv` | Manifest exists; f048 and f024 files exist for each valid time; paths are readable. |
 | `bflow` | `mpaswf` manifest or existing forecast pairs | `FULL_f24.nc`, `FULL_f48.nc`, `PTB_f48mf24.nc`, `manifest.tsv`, `ESMF_weights/weights_manifest.json` | Member directories exist; products exist for each member; expected variables are present; weights manifest exists when regridding is used. |
 | `vbal` | BFLOW samples and static files | `mpas_vbal.nc`, `mpas_sampling.nc`, `mpas_vbal_local_*`, `mpas_sampling_local_*` | PBS job exits successfully; global and local products exist; runlog reports successful completion. |
-| `unbalance` | VBAL products and staged perturbations | `samplesUnbalanced/PTB_f48mf24_*.nc` | Expected member count exists; files are readable NetCDF; control variables are present; stage validation passes. |
-| `hdiag` | `samplesUnbalanced`, VBAL products | `mpas.stddev.nc`, `mpas.cor_rh.nc`, `mpas.cor_rv.nc` | Products exist; dimensions match mesh/control variables; fields are not entirely missing or trivially zero; no BUMP radius error in logs. |
+| `hdiag` | Original VBAL-staged NMC perturbations plus VBAL/sampling products | `mpas.stddev.nc`, `mpas.cor_rh.nc`, `mpas.cor_rv.nc` | HDIAG reads `samples/PTB_f48mf24_*.nc`, applies inverse VBAL in memory, products exist, dimensions match mesh/control variables, fields are not entirely missing or trivially zero, and no BUMP radius error appears in logs. |
 | `nicas` | HDIAG correlation scales and stddev | `merge/mpas_nicas.nc`, local NICAS products, grids, `mpas.nicas_norm.nc`, `mpas.dirac_nicas.nc`, `merge.done` | All per-variable jobs and merge complete; merged global/local/grid products exist; 2D surface pressure remains separated from 3D controls for reads. |
 | `so` | NICAS merge, HDIAG stddev, VBAL products | `obsout_SO_T.h5`, `obsout_SO_U.h5`, `an.*.nc`, `run_SO.runlog` | OOPS status is successful; `CostFunction::addIncrement: Analysis` appears in log; obsout and analysis files exist. |
 | `dirac` | NICAS merge, HDIAG stddev, VBAL products | `mpas.dirac.nc` | Run completes successfully; output exists and is readable; response is not entirely missing/trivial. |
@@ -78,7 +77,8 @@ find "$BFLOW/output" -name 'FULL_f48.nc' | sort
 
 ### VBAL
 
-VBAL calibrates the vertical/multivariate balance products.
+VBAL calibrates the vertical/multivariate balance products and stages the
+original perturbation members that will be reused by HDIAG.
 
 Expected product pattern:
 
@@ -97,37 +97,29 @@ test -s "$VBAL/VBAL/mpas_vbal.nc"
 test -s "$VBAL/VBAL/mpas_sampling.nc"
 ls "$VBAL/VBAL"/mpas_vbal_local_* | wc -l
 ls "$VBAL/VBAL"/mpas_sampling_local_* | wc -l
+find "$VBAL/samples" -name 'PTB_f48mf24_*.nc' | sort
 ```
 
 Important note: `mpas_vbal.nc` may use NetCDF groups. Tools that inspect only the
 root group can make the file look empty even when it is valid.
 
-### UNBALANCE
-
-UNBALANCE materializes the training perturbations used by HDIAG.
-
-Expected product pattern:
-
-```text
-$UNBALANCE/samplesUnbalanced/PTB_f48mf24_001.nc
-$UNBALANCE/samplesUnbalanced/PTB_f48mf24_002.nc
-$UNBALANCE/samplesUnbalanced/PTB_f48mf24_003.nc
-$UNBALANCE/samplesUnbalanced/PTB_f48mf24_004.nc
-```
-
-Minimum checks:
-
-```bash
-find "$UNBALANCE/samplesUnbalanced" -name 'PTB_f48mf24_*.nc' | sort
-ncdump -h "$UNBALANCE/samplesUnbalanced/PTB_f48mf24_001.nc" | head
-```
-
-Do not run HDIAG from raw PTB files when the configured workflow expects
-`samplesUnbalanced`.
+VBAL does not need to write `samplesUnbalanced` and does not rely on
+`background error.output ensemble`.
 
 ### HDIAG
 
 HDIAG computes the statistical diagnostics that feed NICAS and the final B.
+It reads the original centered NMC perturbations from the VBAL workspace and
+applies `BUMP_VerticalBalance` as a SABER outer block before BUMP_NICAS
+calibration. The inverse balance transform therefore happens in memory.
+
+Expected input pattern:
+
+```text
+$HDIAG/samples/PTB_f48mf24_*.nc
+$HDIAG/vbal/mpas_vbal.nc
+$HDIAG/vbal/mpas_sampling.nc
+```
 
 Expected product pattern:
 
@@ -144,10 +136,15 @@ test -s "$HDIAG/HDIAG/mpas.stddev.nc"
 test -s "$HDIAG/HDIAG/mpas.cor_rh.nc"
 test -s "$HDIAG/HDIAG/mpas.cor_rv.nc"
 ncdump -h "$HDIAG/HDIAG/mpas.stddev.nc" | head
+grep -E 'BUMP_VerticalBalance|read vertical balance|Run: Finishing|status = 0' "$HDIAG/HDIAG/run_hdiag.runlog"
 ```
 
 Troubleshooting cue: if the run fails with a BUMP universe/radius error, check
 the HDIAG distance class count and width.
+
+The historical `unbalance_core` remains available only for controlled A/B
+validation; it is not a production stage. See
+[`in-memory-vbal-hdiag.md`](in-memory-vbal-hdiag.md).
 
 ### NICAS
 
