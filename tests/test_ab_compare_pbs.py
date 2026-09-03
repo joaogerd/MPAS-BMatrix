@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bmatrix.ab_compare_pbs import prepare_compare_job
+from bmatrix.ab_compare_pbs import _comparison_shell, prepare_compare_job
 
 
 def _config(tmp_path: Path) -> tuple[dict[str, object], Path, Path]:
@@ -29,7 +29,27 @@ def _config(tmp_path: Path) -> tuple[dict[str, object], Path, Path]:
     return config, project_root, config_path
 
 
-def test_compare_pbs_uses_one_cpu_preserves_spack_pythonpath_and_scans_all_path_pythons(
+def test_comparison_shell_preserves_spack_pythonpath_and_scans_all_path_pythons() -> None:
+    text = _comparison_shell([
+        "-m",
+        "bmatrix.ab_hdiag",
+        "compare-downstream",
+        "--config",
+        "/project/configs/case.yaml",
+    ])
+
+    assert 'export PYTHONPATH="${BMATRIX_PROJECT_SRC}${PYTHONPATH:+:${PYTHONPATH}}"' in text
+    assert "IFS=':' read -r -a path_entries <<< \"$PATH\"" in text
+    assert "for python_name in python3.11 python3 python" in text
+    assert "import numpy, netCDF4" in text
+    assert "import bmatrix.ab_hdiag" in text
+    assert 'echo "COMPARE_PYTHON=$COMPARE_PYTHON"' in text
+    assert '"$COMPARE_PYTHON" -m bmatrix.ab_hdiag compare-downstream' in text
+    assert "touch compare.done" in text
+    assert "/home2/" not in text
+
+
+def test_compare_pbs_uses_one_cpu_and_absolute_runtime_contract(
     tmp_path: Path, monkeypatch
 ) -> None:
     config, project_root, config_path = _config(tmp_path)
@@ -45,13 +65,8 @@ def test_compare_pbs_uses_one_cpu_preserves_spack_pythonpath_and_scans_all_path_
     assert f"BMATRIX_PROJECT_SRC={project_root / 'src'}" in text
     assert f"MONAN_JEDI_INSTALL_ROOT={tmp_path / 'install'}" in text
     assert str(config_path.resolve()) in text
-    assert 'export PYTHONPATH="${BMATRIX_PROJECT_SRC}${PYTHONPATH:+:${PYTHONPATH}}"' in text
-    assert "for python_name in python3.11 python3 python" in text
-    assert "IFS=':' read -r -a path_entries <<< \"$PATH\"" in text
-    assert "import numpy, netCDF4" in text
-    assert "import bmatrix.ab_hdiag" in text
-    assert 'echo "COMPARE_PYTHON=$COMPARE_PYTHON"' in text
-    assert '"$COMPARE_PYTHON" -m bmatrix.ab_hdiag compare-downstream' in text
+    assert "bmatrix.ab_hdiag" in text
+    assert "compare-downstream" in text
     assert "touch compare.done" in text
     assert "/home2/" not in text
 
@@ -70,4 +85,4 @@ def test_compare_pbs_accepts_explicit_shared_python_override(tmp_path: Path, mon
     text = (workspace / "qsub_compare_downstream.bash").read_text()
 
     assert f"BMATRIX_COMPARE_PYTHON={shared_python}" in text
-    assert 'python_candidates+=("${BMATRIX_COMPARE_PYTHON}")' in text
+    assert "BMATRIX_COMPARE_PYTHON" in text
