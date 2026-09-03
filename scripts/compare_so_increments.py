@@ -15,6 +15,8 @@ from pathlib import Path
 
 import numpy as np
 
+from bmatrix.so_core.model import so_artifacts
+
 LOG_PATTERN = re.compile(
     r"(?:DRPCG|gradient|cost|\bJb\b|\bJo\b|iteration|ombg|oman|depart)",
     re.IGNORECASE,
@@ -38,13 +40,11 @@ def _analysis(root: Path) -> Path:
 
 
 def _runlog(root: Path) -> Path:
-    direct = root / "run_so.runlog"
-    if direct.is_file():
-        return direct
-    matches = sorted(root.glob("run_so*.runlog"))
-    if len(matches) != 1:
-        raise RuntimeError(f"Esperado exatamente um run_so*.runlog em {root}; encontrados {len(matches)}")
-    return matches[0]
+    """Return the canonical default SO runlog owned by so_artifacts()."""
+    path = root / so_artifacts("default")["runlog"]
+    if not path.is_file():
+        raise RuntimeError(f"Runlog SO padrão ausente: {path}")
+    return path
 
 
 def _as_float(variable) -> np.ndarray | None:
