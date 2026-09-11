@@ -22,10 +22,8 @@ must not import NumPy from a `spack-stack/.../py-numpy-.../python3.11` path.
 MONAN-JEDI provides one public runtime installation for the whole workflow:
 
 ```bash
-export MONAN_JEDI_INSTALL_ROOT=/p/projetos/monan_das/$USER/build/monan-jedi
-export MPAS_MESH_ROOT=/path/to/mpas_meshes
-export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
-export STACK_ROOT=/path/to/spack-stack
+export MONAN_JEDI_INSTALL_ROOT="/p/projetos/monan_das/$USER/build/monan-jedi"
+export STACK_ROOT="/p/projetos/monan_das/joao.gerd/env/spack-stack/spack-stack-inpe-overlay-20260515T181917Z"
 ```
 
 You do **not** need to export `MONAN_JEDI_SOURCE` or

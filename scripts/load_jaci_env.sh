@@ -18,7 +18,7 @@
 #
 # Required before first use:
 #
-#   export STACK_ROOT=/path/to/spack-stack
+#   export STACK_ROOT=/p/projetos/monan_das/joao.gerd/env/spack-stack/spack-stack-inpe-overlay-20260515T181917Z
 #
 # Optional overrides:
 #
@@ -61,7 +61,7 @@ __jaci_restore_conda_python() {
 if [[ -z "${STACK_ROOT:-}" ]]; then
   echo "ERRO: STACK_ROOT is not set."
   echo "Set it to the root of the spack-stack checkout/environment, for example:"
-  echo "  export STACK_ROOT=/path/to/spack-stack"
+  echo "  export STACK_ROOT=/p/projetos/monan_das/joao.gerd/env/spack-stack/spack-stack-inpe-overlay-20260515T181917Z"
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
   unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1

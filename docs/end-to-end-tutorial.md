@@ -74,11 +74,15 @@ Use `main` unless a specific test branch was requested. For this migration use
 ## 4. Declare the JACI x1.10242 paths
 
 ```bash
-export MONAN_JEDI_INSTALL_ROOT=/p/projetos/monan_das/$USER/build/monan-jedi
-export MPAS_MESH_ROOT=/path/to/mpas_meshes
-export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
-export STACK_ROOT=/path/to/spack-stack
+export MONAN_JEDI_INSTALL_ROOT="/p/projetos/monan_das/$USER/build/monan-jedi"
+export STACK_ROOT="/p/projetos/monan_das/joao.gerd/env/spack-stack/spack-stack-inpe-overlay-20260515T181917Z"
 ```
+
+The mesh, its 128-part partition and the static x1.10242 files already have
+concrete JACI paths in `configs/jaci-x1.10242.yaml`. The expression `$USER`
+is replaced automatically by the current login name. Users should verify that
+those shared inputs exist; they do not need to invent or export alternative
+mesh paths.
 
 The production workflow requires `mpasjedi_error_covariance_toolbox.x` and
 `mpasjedi_variational.x`. It does not require
