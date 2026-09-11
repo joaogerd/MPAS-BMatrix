@@ -18,7 +18,7 @@
 #
 # Required before first use:
 #
-#   export STACK_ROOT=/p/projetos/monan_das/joao.gerd/env/spack-stack/spack-stack-inpe-overlay-20260515T181917Z
+#   export STACK_ROOT=/p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack
 #
 # Optional overrides:
 #
@@ -44,6 +44,7 @@
 __JACI_ENV_OLDPWD="$(pwd)"
 __JACI_ENV_FORCE="${JACI_FORCE_RELOAD:-false}"
 __JACI_ENV_CONDA_PREFIX="${CONDA_PREFIX:-}"
+__JACI_ENV_STACK_INPUT="${STACK_ROOT:-}"
 
 # Keep the command-line Python tools isolated from Python packages added by
 # spack-stack. The compiled MPAS/JEDI programs still use the complete JACI
@@ -61,24 +62,44 @@ __jaci_restore_conda_python() {
 if [[ -z "${STACK_ROOT:-}" ]]; then
   echo "ERRO: STACK_ROOT is not set."
   echo "Set it to the root of the spack-stack checkout/environment, for example:"
-  echo "  export STACK_ROOT=/p/projetos/monan_das/joao.gerd/env/spack-stack/spack-stack-inpe-overlay-20260515T181917Z"
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  echo "  export STACK_ROOT=/p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack"
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
   unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
 
 if [[ ! -d "${STACK_ROOT}" ]]; then
   echo "ERRO: STACK_ROOT does not exist or is not a directory: ${STACK_ROOT}"
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+  unset -f __jaci_restore_conda_python
+  return 1 2>/dev/null || exit 1
+fi
+
+export STACK_ENV_NAME="${STACK_ENV_NAME:-jaci-mpas-jedi-gcc12-craympich}"
+export STACK_SITE_SETUP="${STACK_SITE_SETUP:-configs/sites/tier2/jaci/setup.sh}"
+export STACK_ENV_MODULE="${STACK_ENV_MODULE:-cray-mpich/8.1.31/none/none/jedi-mpas-env/1.0.0}"
+
+# Accept either the spack-stack checkout itself or its immediate parent. Resolve
+# the actual checkout before deriving the module directory.
+if [[ -f "${STACK_ROOT}/${STACK_SITE_SETUP}" ]]; then
+  :
+elif [[ -f "${STACK_ROOT}/spack-stack/${STACK_SITE_SETUP}" ]]; then
+  export STACK_ROOT="${STACK_ROOT}/spack-stack"
+else
+  echo "ERRO: JACI setup file not found."
+  echo "STACK_ROOT received: ${__JACI_ENV_STACK_INPUT}"
+  echo "Expected file: ${STACK_SITE_SETUP}"
+  echo "Use the validated checkout:"
+  echo "  export STACK_ROOT=/p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack"
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
   unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
 
 export STACK_ROOT
-export STACK_ENV_NAME="${STACK_ENV_NAME:-jaci-mpas-jedi-gcc12-craympich}"
-export STACK_MODULE_ROOT="${STACK_MODULE_ROOT:-${STACK_ROOT}/envs/${STACK_ENV_NAME}/modules}"
-export STACK_SITE_SETUP="${STACK_SITE_SETUP:-configs/sites/tier2/jaci/setup.sh}"
-export STACK_ENV_MODULE="${STACK_ENV_MODULE:-cray-mpich/8.1.31/none/none/jedi-mpas-env/1.0.0}"
+if [[ -z "${STACK_MODULE_ROOT:-}" || ! -d "${STACK_MODULE_ROOT}" ]]; then
+  export STACK_MODULE_ROOT="${STACK_ROOT}/envs/${STACK_ENV_NAME}/modules"
+fi
 
 # If already loaded, do not reload. Reloading the full stack on top of itself can
 # trigger module conflicts such as gcc-native/12.3 versus Spack gcc/12.3.0/*
@@ -91,7 +112,7 @@ case ":${LOADEDMODULES:-}:" in
       echo "STACK_ENV_MODULE=${STACK_ENV_MODULE}"
       echo "Python command=$(command -v python 2>/dev/null || true)"
       echo "PWD=$(pwd)"
-      unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+      unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
       unset -f __jaci_restore_conda_python
       return 0 2>/dev/null || exit 0
     fi
@@ -103,7 +124,7 @@ esac
 if ! module purge; then
   echo "ERRO: module purge failed. Start a fresh shell and try again."
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
   unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
@@ -111,7 +132,7 @@ fi
 if ! cd "${STACK_ROOT}"; then
   echo "ERRO: cannot cd to STACK_ROOT=${STACK_ROOT}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
   unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
@@ -119,7 +140,7 @@ fi
 if ! source "${STACK_SITE_SETUP}"; then
   echo "ERRO: failed to source ${STACK_SITE_SETUP}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
   unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
@@ -127,7 +148,7 @@ fi
 if ! module use "${STACK_MODULE_ROOT}"; then
   echo "ERRO: failed to add module path ${STACK_MODULE_ROOT}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
   unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
@@ -136,7 +157,7 @@ if ! module load "${STACK_ENV_MODULE}"; then
   echo "ERRO: failed to load ${STACK_ENV_MODULE}"
   echo "The current module state may be inconsistent. Start a fresh shell before retrying."
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
   unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
@@ -165,12 +186,12 @@ export GNU_VERSION="${GNU_VERSION:-12.3}"
 
 cd "${__JACI_ENV_OLDPWD}" || {
   echo "ERRO: could not return to ${__JACI_ENV_OLDPWD}"
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
   unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 }
 
-unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
 
 unset -f __jaci_restore_conda_python
 

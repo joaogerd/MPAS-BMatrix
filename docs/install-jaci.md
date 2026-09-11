@@ -112,10 +112,12 @@ The paths must begin with the active Conda environment, normally:
 
 ## 8. Load the scientific JACI environment
 
-Set the spack-stack location used by the group and load the runtime:
+Set the validated spack-stack checkout used by the group and load the scientific
+programs. The path must end in `/spack-stack`, where the `configs` and
+`envs` directories are located:
 
 ~~~bash
-export STACK_ROOT="/p/projetos/monan_das/joao.gerd/env/spack-stack/spack-stack-inpe-overlay-20260515T181917Z"
+export STACK_ROOT="/p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack"
 cd "$BMATRIX_ROOT"
 source scripts/load_jaci_env.sh
 ~~~
