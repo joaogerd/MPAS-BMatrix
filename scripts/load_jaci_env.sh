@@ -43,18 +43,34 @@
 
 __JACI_ENV_OLDPWD="$(pwd)"
 __JACI_ENV_FORCE="${JACI_FORCE_RELOAD:-false}"
+__JACI_ENV_CONDA_PREFIX="${CONDA_PREFIX:-}"
+
+# Keep the command-line Python tools isolated from Python packages added by
+# spack-stack. The compiled MPAS/JEDI programs still use the complete JACI
+# runtime loaded below.
+__jaci_restore_conda_python() {
+  if [[ -n "${__JACI_ENV_CONDA_PREFIX}" && -x "${__JACI_ENV_CONDA_PREFIX}/bin/python" ]]; then
+    export PATH="${__JACI_ENV_CONDA_PREFIX}/bin:${PATH}"
+    unset PYTHONHOME
+    unset PYTHONPATH
+    export PYTHONNOUSERSITE=1
+    hash -r 2>/dev/null || true
+  fi
+}
 
 if [[ -z "${STACK_ROOT:-}" ]]; then
   echo "ERRO: STACK_ROOT is not set."
   echo "Set it to the root of the spack-stack checkout/environment, for example:"
   echo "  export STACK_ROOT=/path/to/spack-stack"
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
 
 if [[ ! -d "${STACK_ROOT}" ]]; then
   echo "ERRO: STACK_ROOT does not exist or is not a directory: ${STACK_ROOT}"
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
 
@@ -70,10 +86,13 @@ export STACK_ENV_MODULE="${STACK_ENV_MODULE:-cray-mpich/8.1.31/none/none/jedi-mp
 case ":${LOADEDMODULES:-}:" in
   *":${STACK_ENV_MODULE}:"*)
     if [[ "${__JACI_ENV_FORCE}" != "true" ]]; then
+      __jaci_restore_conda_python
       echo "JACI MPAS-JEDI environment already loaded; not reloading."
       echo "STACK_ENV_MODULE=${STACK_ENV_MODULE}"
+      echo "Python command=$(command -v python 2>/dev/null || true)"
       echo "PWD=$(pwd)"
-      unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE
+      unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+      unset -f __jaci_restore_conda_python
       return 0 2>/dev/null || exit 0
     fi
     ;;
@@ -84,28 +103,32 @@ esac
 if ! module purge; then
   echo "ERRO: module purge failed. Start a fresh shell and try again."
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
 
 if ! cd "${STACK_ROOT}"; then
   echo "ERRO: cannot cd to STACK_ROOT=${STACK_ROOT}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
 
 if ! source "${STACK_SITE_SETUP}"; then
   echo "ERRO: failed to source ${STACK_SITE_SETUP}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
 
 if ! module use "${STACK_MODULE_ROOT}"; then
   echo "ERRO: failed to add module path ${STACK_MODULE_ROOT}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
 
@@ -113,9 +136,15 @@ if ! module load "${STACK_ENV_MODULE}"; then
   echo "ERRO: failed to load ${STACK_ENV_MODULE}"
   echo "The current module state may be inconsistent. Start a fresh shell before retrying."
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 fi
+
+# If a Conda environment was active before loading the scientific runtime,
+# restore its Python command and prevent packages compiled for the spack-stack
+# Python from being imported by the Conda interpreter.
+__jaci_restore_conda_python
 
 # Build/runtime compiler variables expected on JACI with CrayPE.
 export CC="${CC:-/opt/cray/pe/craype/2.7.33/bin/cc}"
@@ -136,11 +165,14 @@ export GNU_VERSION="${GNU_VERSION:-12.3}"
 
 cd "${__JACI_ENV_OLDPWD}" || {
   echo "ERRO: could not return to ${__JACI_ENV_OLDPWD}"
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+  unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
 }
 
-unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE
+unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX
+
+unset -f __jaci_restore_conda_python
 
 echo "Loaded JACI MPAS-JEDI environment"
 echo "STACK_ROOT=${STACK_ROOT}"
@@ -150,4 +182,6 @@ echo "PE_ENV=${PE_ENV:-}"
 echo "GNU_VERSION=${GNU_VERSION:-}"
 echo "CC=${CC}"
 echo "FC=${FC}"
+echo "Python command=$(command -v python 2>/dev/null || true)"
+echo "PYTHONPATH=${PYTHONPATH:-<not set>}"
 echo "PWD=$(pwd)"

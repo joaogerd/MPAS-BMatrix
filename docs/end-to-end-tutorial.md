@@ -29,22 +29,34 @@ start date/time:
 
 At the end, add job IDs, log paths, validation results and missing products.
 
-## 2. Choose project and work roots
+## 2. Create the Python environment and install both tools
 
-Use persistent storage. Do not use `/tmp` for generated workspaces or audit logs.
+Before cloning or running the scientific workflow, follow
+[Installation on JACI](install-jaci.md). That guide:
+
+- creates the `monan-jedi-bmatrix` Conda environment with Python 3.11;
+- installs MPASWF and MPAS-BMatrix;
+- loads the scientific JACI environment without mixing two Python installations;
+- verifies the origins of Python and NumPy.
+
+Do not continue until these commands succeed:
 
 ```bash
-export PROJECT_ROOT=/path/to/projects
-export WORK_ROOT=/path/to/work/MPAS-BMatrix
-mkdir -p "$PROJECT_ROOT" "$WORK_ROOT"
+conda activate monan-jedi-bmatrix
+mpaswf --help
+mpas-bmatrix --help
+python -c "import sys, numpy; print(sys.executable); print(numpy.__file__)"
 ```
 
-## 3. Clone the repositories
+Both printed paths must belong to the active Conda environment.
+
+## 3. Use the repositories installed by the guide
+
+The installation guide defines:
 
 ```bash
-cd "$PROJECT_ROOT"
-git clone https://github.com/joaogerd/MPAS-BMatrix.git
-git clone https://github.com/joaogerd/mpaswf.git
+export PROJECT_ROOT="/p/projetos/monan_das/$USER/projects"
+export WORK_ROOT="/p/projetos/monan_das/$USER/work/MPAS-BMatrix"
 export BMATRIX_ROOT="$PROJECT_ROOT/MPAS-BMatrix"
 export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
 ```
@@ -73,27 +85,36 @@ The production workflow requires `mpasjedi_error_covariance_toolbox.x` and
 `mpasjedi_unbalance_ensemble.x`; that executable is used only by the retained
 legacy A/B reference path.
 
-## 5. Load the runtime and install packages
+## 5. Load the JACI scientific environment
+
+The Python environment and both tools were installed in Section 2. Load the
+scientific programs and libraries required by MPAS-JEDI:
 
 ```bash
+conda activate monan-jedi-bmatrix
 cd "$BMATRIX_ROOT"
 source scripts/load_jaci_env.sh
-python -m pip install --no-deps -e "$MPASWF_ROOT"
-python -m pip install -e "$BMATRIX_ROOT"
 ```
 
-For plotting and developer checks:
+The script preserves the Conda Python and removes Python search paths inserted by
+spack-stack. Verify before continuing:
 
 ```bash
-python -m pip install -e "$BMATRIX_ROOT[diagnostics,dev]"
+command -v python
+command -v mpaswf
+command -v mpas-bmatrix
+python -c "import sys, numpy; print(sys.version); print(sys.executable); print(numpy.__file__)"
 ```
+
+The Python executable, `mpaswf`, `mpas-bmatrix` and NumPy must come from the
+same Conda environment.
 
 ## 6. Validate the composed configuration
 
 ```bash
 cd "$BMATRIX_ROOT"
 export CONFIG=configs/jaci-x1.10242.yaml
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix check-config \
+mpas-bmatrix check-config \
   --config "$CONFIG" > "$WORK_ROOT/check-config.json"
 less "$WORK_ROOT/check-config.json"
 ```
@@ -110,12 +131,44 @@ Minimum acceptance:
   but it is not a production stage;
 - configuration provenance is recorded.
 
-## 7. Obtain the forecast-pair input
+## 7. Locate the file containing the forecast pairs
 
-Generate f048/f024 forecasts and the manifest with `mpaswf`, or use an existing
-BFLOW workspace.
+MPASWF writes a tab-separated text file listing each valid time and the
+corresponding 48 h and 24 h forecasts. The technical name of this file is
+`mpas-forecast-manifest.tsv`.
 
-For an existing BFLOW workspace:
+With the standard JACI configuration, its location is:
+
+```bash
+export MANIFEST="/p/projetos/monan_das/$USER/work/mpaswf/products/mpas-forecast-manifest.tsv"
+```
+
+The expression `$USER` is replaced automatically by the current JACI login
+name. For example, for `liviany.viana`, the path becomes:
+
+```text
+/p/projetos/monan_das/liviany.viana/work/mpaswf/products/mpas-forecast-manifest.tsv
+```
+
+This file is not created manually. It is generated after the MPAS forecasts by:
+
+```bash
+cd "$MPASWF_ROOT"
+mpaswf run --phase manifest --config configs/jaci-x1.10242.yaml
+```
+
+Confirm that the file exists and inspect its first lines:
+
+```bash
+test -s "$MANIFEST" || {
+  echo "Forecast-pair file not found: $MANIFEST"
+  return 1 2>/dev/null || exit 1
+}
+head "$MANIFEST"
+mpas-bmatrix check-manifest --manifest "$MANIFEST"
+```
+
+Alternatively, a test may resume from an existing BFLOW directory. In that case:
 
 ```bash
 export BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
@@ -126,7 +179,7 @@ find "$BFLOW/output" -name 'PTB_f48mf24.nc' | sort
 ## 8. Inspect the execution plan
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --manifest "$MANIFEST" \
   --from-stage bflow \
@@ -145,7 +198,7 @@ and must not contain `unbalance`.
 ## 9. Run and validate BFLOW
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --manifest "$MANIFEST" \
   --from-stage bflow \
@@ -158,7 +211,7 @@ Then validate BFLOW and export its deterministic workspace.
 ## 10. Run VBAL through PLOTS
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
   --from-stage vbal \
@@ -179,7 +232,7 @@ No `samplesUnbalanced` output is expected.
 
 ```bash
 for stage in bflow vbal hdiag nicas so dirac plots; do
-  PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
+  mpas-bmatrix validate \
     --config "$CONFIG" \
     --bflow-workspace "$BFLOW" \
     --stage "$stage" || break
@@ -243,7 +296,6 @@ NICAS, DIRAC and SO.
 cd "$BMATRIX_ROOT"
 mkdir -p .pytest-tmp
 TMPDIR="$BMATRIX_ROOT/.pytest-tmp" \
-PYTHONPATH="src:${PYTHONPATH:-}" \
 python -m pytest -p no:cacheprovider -q
 python -m ruff check src/bmatrix tests
 git diff --check
