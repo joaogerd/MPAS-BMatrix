@@ -268,8 +268,41 @@ grep -nE 'monan_jedi_root:|work_dir:|gfs_dir:|source:|bootstrap:|STACK_ROOT' \
   "$MPASWF_CONFIG"
 ```
 
+The `grep` above is only an inspection aid. It does **not** prove that the
+resolved files and directories exist for the current user.
+
+Run the MPASWF filesystem preflight before submitting anything:
+
+```bash
+mpaswf check-config --config "$MPASWF_CONFIG"
+```
+
+This expands user-specific values such as `$USER` and verifies the resolved
+MONAN-JEDI runtime, MPAS/WPS executables, WPS Vtable, templates, configured
+invariant, mesh/graph/partition sources, and explicit filesystem paths used by
+the PBS bootstrap.
+
+The workflow/data directories `work_dir`, `static_dir`, and `gfs_dir` may
+legitimately be absent on a first run. They are reported as `CREATABLE` when
+their nearest existing parent is writable. Required scientific/runtime inputs
+must already exist and be readable.
+
+Do not continue to `pbs-smoke` unless the command ends with:
+
+```text
+Configuration resources valid: True
+```
+
+For a machine-readable report that can be attached to a test record:
+
+```bash
+mpaswf check-config --config "$MPASWF_CONFIG" --json \
+  > "$WORK_ROOT/mpaswf-config-preflight.json"
+```
+
 Do not modify paths merely because they are configurable. Change them only when
-the declared resource does not exist or your site layout differs.
+the preflight identifies a missing/inaccessible resource or your site layout
+intentionally differs.
 
 ### 6.2 MPAS-BMatrix configuration
 
