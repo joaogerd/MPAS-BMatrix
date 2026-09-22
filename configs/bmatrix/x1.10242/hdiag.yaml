@@ -4,13 +4,14 @@
 #
 # Purpose
 # -------
-# Configures BUMP diagnostics fitted from the UNBALANCE ensemble: standard
-# deviations plus horizontal and vertical correlation length-scale products.
+# Configures BUMP diagnostics fitted from the original centered NMC
+# perturbations. HDIAG applies inverse BUMP_VerticalBalance in memory before
+# estimating standard deviations and horizontal/vertical correlation scales.
 #
 # Rebuild boundary
 # ----------------
 # Changes require rerunning HDIAG and all downstream stages: NICAS, SO, DIRAC
-# and PLOTS. VBAL/UNBALANCE need not be rerun unless their inputs changed.
+# and PLOTS. VBAL need not be rerun unless its inputs or balance settings changed.
 #
 # How to modify it
 # ----------------
@@ -22,7 +23,9 @@
 # =============================================================================
 
 hdiag:
-  # Minimum number of samplesUnbalanced members required before preparation.
+  # Minimum number of centered NMC perturbation members required before
+  # preparation. Production HDIAG reads samples/PTB_f48mf24_*.nc directly; it
+  # does not require materialized samplesUnbalanced files.
   min_members: 4
 
   # Prefix used by BUMP for auxiliary sampling/diagnostic products.
