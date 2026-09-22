@@ -110,9 +110,9 @@ export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
 
 export MONAN_JEDI_INSTALL_ROOT="/p/projetos/monan_das/$USER/build/monan-jedi"
 
-# Validated shared example used by the group. Replace this value if your run
-# must use another validated spack-stack checkout.
-export STACK_ROOT="/p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack"
+# Select the validated spack-stack checkout available to your JACI account.
+# This is a site/runtime input, not a value owned by MPAS-BMatrix.
+export STACK_ROOT="/path/to/validated/spack-stack"
 
 mkdir -p "$PROJECT_ROOT" "$WORK_ROOT"
 \`\`\`
