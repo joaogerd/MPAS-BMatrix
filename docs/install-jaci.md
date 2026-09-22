@@ -125,8 +125,14 @@ cd "$BMATRIX_ROOT"
 source scripts/load_jaci_env.sh
 ~~~
 
-The loading script retains the Conda Python for MPASWF and MPAS-BMatrix while
-making the compiled MPAS-JEDI programs and scientific libraries available.
+The loading script makes the compiled MPAS-JEDI programs and scientific
+libraries available while isolating the Python command-line tools from Python
+packages injected by spack-stack.
+
+After loading the stack, the script always removes `PYTHONHOME` and
+`PYTHONPATH` and sets `PYTHONNOUSERSITE=1`. If a Conda environment was
+already active, it also restores its `bin/python` at the front of `PATH` and
+verifies that NumPy is imported from below `$CONDA_PREFIX`.
 
 ## 9. Confirm that the environments were not mixed
 
@@ -143,18 +149,28 @@ python -c "import sys, numpy; print(sys.version); print(sys.executable); print(n
 Expected result:
 
 - Python version 3.11;
-- Python executable inside monan-jedi-bmatrix;
+- Python executable inside `monan-jedi-bmatrix`;
 - NumPy inside the same Conda environment;
-- mpaswf and mpas-bmatrix inside the same Conda environment.
+- `mpaswf` and `mpas-bmatrix` inside the same Conda environment;
+- `PYTHONPATH` unset.
 
-The test must not show a Conda Python loading NumPy from a path containing:
+Check the search-path isolation explicitly:
+
+~~~bash
+printf 'CONDA_PREFIX=%s\n' "$CONDA_PREFIX"
+printf 'PYTHONPATH=%s\n' "${PYTHONPATH:-<not set>}"
+python -c "import sys, numpy; print('python =', sys.executable); print('numpy  =', numpy.__file__)"
+~~~
+
+Both Python and NumPy must resolve below `$CONDA_PREFIX`. The test must not
+show a Conda Python loading NumPy from a path containing:
 
 ~~~text
 spack-stack/.../py-numpy-.../lib/python3.11/site-packages
 ~~~
 
-If that occurs, stop the test and start a new login shell. Do not try to repair
-the active shell by repeatedly loading and unloading modules.
+With the maintained loader, this mixed state is treated as an error instead of
+being allowed to continue silently.
 
 ## 10. Final verification
 
