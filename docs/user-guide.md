@@ -63,17 +63,19 @@ python -m pip install -e ".[weights,bflow,diagnostics]"
 
 ## 3. Configure the JACI x1.10242 case
 
-The default runnable case uses one MONAN-JEDI runtime installation root plus
-separate mesh/case data paths:
+The default runnable JACI case uses one MONAN-JEDI runtime installation root and
+one explicitly selected spack-stack checkout:
 
 ```bash
 export MONAN_JEDI_INSTALL_ROOT=/p/projetos/monan_das/$USER/build/monan-jedi
-
-export MPAS_MESH_ROOT=/path/to/mpas_meshes
-export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
-
-export STACK_ROOT=/path/to/spack-stack
+export STACK_ROOT=/path/to/validated/spack-stack
 ```
+
+The shipped `configs/jaci-x1.10242.yaml` already declares the x1.10242 mesh,
+partition and static-data paths using the JACI `$USER` convention. Inspect those
+paths and override the YAML only when your site/data layout differs. The
+historical shell variables `MPAS_MESH_ROOT` and `MPAS_JEDI_STATIC_ROOT` are
+not consumed by the current shipped configuration.
 
 From `MONAN_JEDI_INSTALL_ROOT`, MPAS-BMatrix derives the required JEDI/SABER
 executables from `bin/`, MPAS runtime tables from `share/MPAS/core_atmosphere`,
@@ -155,7 +157,7 @@ products.
 Inspect the stage plan without creating files or submitting jobs:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --manifest "$MANIFEST" \
   --to-stage plots \
@@ -165,7 +167,7 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
 Run the complete BFLOW-to-PLOTS workflow:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --manifest "$MANIFEST" \
   --from-stage bflow \
@@ -179,7 +181,7 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
 Resume from an existing BFLOW workspace:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
   --from-stage vbal \
@@ -195,7 +197,7 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
 Use the same stage name in `--from-stage` and `--to-stage`:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
   --from-stage hdiag \
@@ -207,7 +209,7 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
 Validate a completed stage without rerunning it:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
+mpas-bmatrix validate \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
   --stage hdiag
