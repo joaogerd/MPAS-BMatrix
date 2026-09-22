@@ -18,7 +18,7 @@
 #
 # Required before first use:
 #
-#   export STACK_ROOT=/p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack
+#   export STACK_ROOT=/path/to/validated/spack-stack
 #
 # Optional overrides:
 #
@@ -62,7 +62,7 @@ __jaci_restore_conda_python() {
 if [[ -z "${STACK_ROOT:-}" ]]; then
   echo "ERRO: STACK_ROOT is not set."
   echo "Set it to the root of the spack-stack checkout/environment, for example:"
-  echo "  export STACK_ROOT=/p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack"
+  echo "  export STACK_ROOT=/path/to/validated/spack-stack"
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
   unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1
@@ -89,8 +89,8 @@ else
   echo "ERRO: JACI setup file not found."
   echo "STACK_ROOT received: ${__JACI_ENV_STACK_INPUT}"
   echo "Expected file: ${STACK_SITE_SETUP}"
-  echo "Use the validated checkout:"
-  echo "  export STACK_ROOT=/p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack"
+  echo "Set STACK_ROOT to a validated spack-stack checkout, for example:"
+  echo "  export STACK_ROOT=/path/to/validated/spack-stack"
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
   unset -f __jaci_restore_conda_python
   return 1 2>/dev/null || exit 1

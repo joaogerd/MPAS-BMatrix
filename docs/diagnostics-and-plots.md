@@ -6,7 +6,7 @@ not modify scientific NetCDF products.
 ## Command
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix plots \
+mpas-bmatrix plots \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
   --plot-level 30 \

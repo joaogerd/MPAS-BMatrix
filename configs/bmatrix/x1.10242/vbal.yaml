@@ -9,8 +9,9 @@
 #
 # Rebuild boundary
 # ----------------
-# Changes require rerunning VBAL and every downstream stage:
-# UNBALANCE, HDIAG, NICAS, SO, DIRAC and PLOTS.
+# Changes require rerunning VBAL and every downstream production stage:
+# HDIAG, NICAS, SO, DIRAC and PLOTS. The retained UNBALANCE code is only an
+# optional legacy A/B diagnostic and is not part of the production stage graph.
 #
 # How to modify it
 # ----------------

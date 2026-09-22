@@ -1,7 +1,9 @@
 # Installation on JACI
 
-This guide prepares the Python environment used to run MPASWF and MPAS-BMatrix.
-It is intended for the first installation by a user of the JACI computer.
+This guide explains the JACI installation and environment setup in detail.
+The end-to-end tutorial repeats the minimum operational commands required for a
+first complete run, so a user does not need to leave that tutorial to continue.
+Use this page for deeper installation context and troubleshooting.
 
 The Python tools control the calculations. The compiled MPAS-JEDI, SABER and
 BUMP programs are supplied separately by the MONAN-JEDI installation.
@@ -112,12 +114,13 @@ The paths must begin with the active Conda environment, normally:
 
 ## 8. Load the scientific JACI environment
 
-Set the validated spack-stack checkout used by the group and load the scientific
-programs. The path must end in `/spack-stack`, where the `configs` and
-`envs` directories are located:
+Select a validated spack-stack checkout and load the scientific programs. The
+path must identify the spack-stack checkout containing the `configs` and
+`envs` directories. On JACI this may be a shared group checkout or a
+user-owned validated checkout:
 
 ~~~bash
-export STACK_ROOT="/p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack"
+export STACK_ROOT="/path/to/validated/spack-stack"
 cd "$BMATRIX_ROOT"
 source scripts/load_jaci_env.sh
 ~~~

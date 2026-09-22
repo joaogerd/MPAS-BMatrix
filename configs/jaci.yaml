@@ -28,8 +28,10 @@ project:
 environment:
   loader: scripts/load_jaci_env.sh
   variables:
-    # Exact JACI spack-stack environment already validated by MONAN-JEDI/mpaswf.
-    STACK_ROOT: /p/projetos/monan_das/$USER/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack
+    # Spack-stack checkout selected by the user before running MPAS-BMatrix.
+    # Keeping this as an environment reference guarantees that generated PBS
+    # jobs use the same stack chosen for the login-shell validation.
+    STACK_ROOT: ${STACK_ROOT}
 
 install:
   # Canonical MONAN-JEDI public runtime prefix.

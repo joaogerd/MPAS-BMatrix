@@ -188,7 +188,7 @@ MANIFEST=<mpaswf work_dir>/products/mpas-forecast-manifest.tsv
 Build the B-matrix from the upstream MPAS forecast pairs:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --manifest "$MANIFEST" \
   --from-stage bflow \
@@ -200,7 +200,7 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
 For debugging only BFLOW from the manifest:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --manifest "$MANIFEST" \
   --from-stage bflow \
@@ -215,7 +215,7 @@ workspace instead of the manifest:
 ```bash
 BFLOW="$WORK_ROOT/bmatrix/bflow_preprocessing/np128_<START_VALID>_<END_VALID>"
 
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
   --from-stage vbal \

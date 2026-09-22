@@ -246,7 +246,7 @@ find "$PLOTS" -maxdepth 2 -type f \( -name '*.png' -o -name '*.pdf' \) | sort | 
 The public validator should be the first check when a stage exists:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
+mpas-bmatrix validate \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
   --stage <stage>
@@ -255,7 +255,7 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix validate \
 Use `products` to inspect the product contract:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix products \
+mpas-bmatrix products \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW"
 ```

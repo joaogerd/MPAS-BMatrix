@@ -23,7 +23,7 @@ MONAN-JEDI provides one public runtime installation for the whole workflow:
 
 ```bash
 export MONAN_JEDI_INSTALL_ROOT="/p/projetos/monan_das/$USER/build/monan-jedi"
-export STACK_ROOT="/p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack"
+export STACK_ROOT="/path/to/validated/spack-stack"
 ```
 
 You do **not** need to export `MONAN_JEDI_SOURCE` or

@@ -128,7 +128,7 @@ cd "$BMATRIX_ROOT"
 CONFIG=configs/jaci-x1.10242.yaml
 MANIFEST=/path/to/mpaswf-work/products/mpas-forecast-manifest.tsv
 
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --manifest "$MANIFEST" \
   --from-stage bflow \

@@ -66,21 +66,24 @@ set.
 
 ## Quick start
 
-For the first installation on JACI, follow the
-[complete installation and environment guide](docs/install-jaci.md). It creates
-an isolated Conda environment with Python 3.11, installs both commands and checks
-that NumPy is being loaded from the same environment as Python.
+For a first complete run, start with the
+[self-contained end-to-end tutorial](docs/end-to-end-tutorial.md). It includes
+the minimum installation/environment commands, MPASWF forecast generation,
+manifest hand-off, BFLOW creation, covariance stages and final validation in one
+sequential page.
 
-After installation, the supported public commands are:
+For deeper JACI installation details and environment troubleshooting, see
+[Installation on JACI](docs/install-jaci.md).
+
+The supported public commands are:
 
 ```bash
 mpaswf --help
 mpas-bmatrix --help
 ```
 
-The complete test is described in the
-[end-to-end tutorial](docs/end-to-end-tutorial.md). Normal execution uses the
-installed `mpas-bmatrix` command and does not require setting `PYTHONPATH`.
+Normal execution uses the installed `mpas-bmatrix` command and does not
+require setting `PYTHONPATH` or invoking `python -m bmatrix`.
 
 For the standard JACI configuration, the file containing the forecast pairs is
 written by MPASWF at:
