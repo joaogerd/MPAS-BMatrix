@@ -26,16 +26,25 @@ mpas-bmatrix check-config --config configs/jaci-x1.10242.yaml
 
 ## Required environment variables
 
-For the standard x1.10242 JACI case:
+For the shipped x1.10242 JACI case, the configuration itself contains the
+`$USER`-based project/work, mesh and static-data paths. The environment
+variables that must be set before `check-config` are:
 
 ```bash
-export BMATRIX_ROOT=/path/to/projects/MPAS-BMatrix
-export WORK_ROOT=/path/to/work/MPAS-BMatrix
 export MONAN_JEDI_INSTALL_ROOT=/p/projetos/monan_das/$USER/build/monan-jedi
-export MPAS_MESH_ROOT=/path/to/mpas_meshes
-export MPAS_JEDI_STATIC_ROOT=/path/to/validated/x1.10242/static-files
-export STACK_ROOT=/path/to/spack-stack
+export STACK_ROOT=/path/to/validated/spack-stack
 ```
+
+`MONAN_JEDI_INSTALL_ROOT` selects the installed MPAS/JEDI runtime.
+`STACK_ROOT` is propagated into generated PBS scripts through
+`environment.variables.STACK_ROOT`, so batch jobs load the same stack selected
+for the login shell.
+
+`BMATRIX_ROOT` and `WORK_ROOT` are useful shell conveniences in tutorials,
+but they are not configuration inputs unless a custom overlay references them.
+The current shipped case also does not consume `MPAS_MESH_ROOT` or
+`MPAS_JEDI_STATIC_ROOT`; mesh/static paths are explicit in
+`configs/jaci-x1.10242.yaml`.
 
 The normal production configuration does not need:
 
@@ -81,7 +90,9 @@ partition files are declared through `MPAS_MESH_ROOT`.
 
 Variables needed before `scripts/load_jaci_env.sh` runs inside a PBS job belong
 under `environment.variables`; generated scripts must not depend on arbitrary
-login-shell inheritance.
+login-shell inheritance. The maintained JACI base maps
+`environment.variables.STACK_ROOT` to `${STACK_ROOT}`, making the selected
+stack an explicit run-time input instead of a personal hardcoded path.
 
 ## Include semantics
 
