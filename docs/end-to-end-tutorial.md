@@ -277,28 +277,63 @@ Run the MPASWF filesystem preflight before submitting anything:
 mpaswf check-config --config "$MPASWF_CONFIG"
 ```
 
-This expands user-specific values such as `$USER` and verifies the resolved
-MONAN-JEDI runtime, MPAS/WPS executables, WPS Vtable, templates, configured
-invariant, mesh/graph/partition sources, and explicit filesystem paths used by
-the PBS bootstrap.
+This expands user-specific values such as `$USER` and validates the
+resources actually consumed by the active workflow path. For the maintained
+JACI/x1.10242 case this includes:
+
+- the MONAN-JEDI installation root;
+- MPAS and WPS executables;
+- the WPS Vtable;
+- writable work/static/GFS directories;
+- the repository templates used by WPS and MPAS initialization;
+- the configured invariant, mesh, graph and 128-way partition;
+- the reference forecast namelist/streams and required `stream_list.*` files;
+- the installed MPAS physics tables used by the reference forecast;
+- explicit filesystem paths used by the PBS bootstrap.
+
+The preflight is path-aware: it does **not** require generic static templates
+when `static.source` supplies the validated invariant, and it does **not**
+require generic forecast templates when
+`validation.require_reference_preflight: true` selects the validated tutorial
+forecast runtime.
 
 The workflow/data directories `work_dir`, `static_dir`, and `gfs_dir` may
 legitimately be absent on a first run. They are reported as `CREATABLE` when
 their nearest existing parent is writable. Required scientific/runtime inputs
 must already exist and be readable.
 
-Do not continue to `pbs-smoke` unless the command ends with:
+The human-readable output uses the same MPASWF terminal language as the other
+commands:
 
 ```text
-Configuration resources valid: True
+✓ resource.name — OK
+· /resolved/path
+
+✗ resource.name — MISSING
+· /resolved/missing/path
 ```
+
+A successful run ends with a summary equivalent to:
+
+```text
+✓ MPASWF config preflight: complete — <N> checks passed.
+```
+
+Do not continue to `pbs-smoke` if any `✗` line is present or if
+`check-config` returns a non-zero status.
 
 For a machine-readable report that can be attached to a test record:
 
 ```bash
 mpaswf check-config --config "$MPASWF_CONFIG" --json \
   > "$WORK_ROOT/mpaswf-config-preflight.json"
+
+python -m json.tool "$WORK_ROOT/mpaswf-config-preflight.json" >/dev/null
 ```
+
+The `--json` form emits JSON only, with no human status prefix, so it can be
+consumed directly by `json.tool`, `jq`, CI jobs, or archived with the run
+record.
 
 Do not modify paths merely because they are configurable. Change them only when
 the preflight identifies a missing/inaccessible resource or your site layout
@@ -750,6 +785,7 @@ source scripts/load_jaci_env.sh
 mpas-bmatrix check-config --config "$CONFIG" >/dev/null
 
 cd "$MPASWF_ROOT"
+mpaswf check-config --config "$MPASWF_CONFIG"
 mpaswf pbs-smoke --config "$MPASWF_CONFIG"
 mpaswf run --phase prepare --config "$MPASWF_CONFIG"
 mpaswf run --phase init --config "$MPASWF_CONFIG" --submit --wait
