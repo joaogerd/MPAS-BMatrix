@@ -273,8 +273,8 @@ For the complete configuration contract, see [Configuration](configuration.md).
 
 ## 7. Generate MPAS forecasts with MPASWF -- Path A
 
-This is the normal first-run path. Skip to [Path B](#11-path-b--resume-from-an-existing-bflow-workspace)
-only when a completed BFLOW workspace already exists.
+This is the normal first-run path. Skip to Section 11 (Path B) only when a
+completed BFLOW workspace already exists.
 
 ### 7.1 Validate PBS/MPI before a long job
 
