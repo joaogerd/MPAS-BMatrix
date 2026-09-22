@@ -220,7 +220,7 @@ The upstream JACI YAML owns:
 - PBS resources and compute-node bootstrap.
 
 The shipped paths use `$USER` where the data are expected to be user-local.
-The maintained bootstrap uses `\${STACK_ROOT}`, so selecting another validated
+The maintained bootstrap uses `${STACK_ROOT}`, so selecting another validated
 stack requires changing the environment variable rather than editing a user
 name into the YAML.
 
