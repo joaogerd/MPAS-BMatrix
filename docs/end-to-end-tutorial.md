@@ -77,11 +77,18 @@ conda create -n monan-jedi-bmatrix -c conda-forge \
   esmpy windspharm pytest ruff -y
 ```
 
-On later logins, only activate it:
+On every new JACI login, initialize Conda again and then activate the existing
+environment:
 
 ```bash
+module load anaconda
+start_conda
 conda activate monan-jedi-bmatrix
 ```
+
+Creating the environment is a one-time operation; initializing Conda with
+`module load anaconda` + `start_conda` is required again in a fresh JACI
+shell.
 
 For more detail about the Python/spack-stack isolation strategy, see
 [Installation on JACI](install-jaci.md).
@@ -178,7 +185,10 @@ git -C "$BMATRIX_ROOT" rev-parse HEAD
 ## 5. Load the JACI scientific environment
 
 ```bash
+module load anaconda
+start_conda
 conda activate monan-jedi-bmatrix
+
 cd "$BMATRIX_ROOT"
 source scripts/load_jaci_env.sh
 ```
@@ -195,11 +205,28 @@ command -v mpas-bmatrix
 python -c "import sys, numpy; print(sys.executable); print(numpy.__file__)"
 ```
 
-Expected: Python, NumPy, `mpaswf` and `mpas-bmatrix` all resolve through the
-active Conda environment.
+Expected:
 
-If Python comes from Conda but NumPy comes from a
-`spack-stack/.../site-packages` path, stop and start a new clean login shell.
+- `python`, `mpaswf` and `mpas-bmatrix` resolve through the active Conda
+  environment;
+- NumPy is loaded from a path below `$CONDA_PREFIX`;
+- `PYTHONPATH` is not set after `load_jaci_env.sh`.
+
+The loader now removes Python search paths injected by spack-stack
+unconditionally. If a Conda environment was already active, it also verifies
+that both Python and NumPy belong to that environment and fails immediately if
+they are mixed.
+
+A direct checkpoint is:
+
+```bash
+printf 'CONDA_PREFIX=%s\n' "$CONDA_PREFIX"
+printf 'PYTHONPATH=%s\n' "${PYTHONPATH:-<not set>}"
+python -c "import sys, numpy; print('python =', sys.executable); print('numpy  =', numpy.__file__)"
+```
+
+For the supported Conda workflow, both printed paths must begin with
+`$CONDA_PREFIX`, and `PYTHONPATH` must print `<not set>`.
 
 ## 6. Inspect the two JACI configurations
 
