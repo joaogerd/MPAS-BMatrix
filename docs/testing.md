@@ -94,7 +94,6 @@ Check the package command:
 
 ```bash
 mpas-bmatrix --help
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix --help
 ```
 
 ## 4. Mocking upstream stages
@@ -185,7 +184,7 @@ Use JACI end-to-end checks for changes that affect scientific execution.
 Recommended production sequence from an existing BFLOW workspace:
 
 ```bash
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
   --from-stage vbal \
@@ -193,7 +192,7 @@ PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
   --clean \
   --poll-seconds 30
 
-PYTHONPATH="src:${PYTHONPATH:-}" python -m bmatrix build \
+mpas-bmatrix build \
   --config "$CONFIG" \
   --bflow-workspace "$BFLOW" \
   --from-stage nicas \
