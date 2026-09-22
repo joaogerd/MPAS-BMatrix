@@ -49,14 +49,63 @@ __JACI_ENV_STACK_INPUT="${STACK_ROOT:-}"
 # Keep the command-line Python tools isolated from Python packages added by
 # spack-stack. The compiled MPAS/JEDI programs still use the complete JACI
 # runtime loaded below.
-__jaci_restore_conda_python() {
+#
+# Important: PYTHONPATH/PYTHONHOME must be sanitized even when Conda was not
+# active when this script was sourced. Environment modules add spack-stack
+# site-packages to PYTHONPATH; if they survive until a later "conda activate",
+# Conda's python can import NumPy/xarray/etc. from spack-stack.
+__jaci_sanitize_python_environment() {
+  unset PYTHONHOME
+  unset PYTHONPATH
+  export PYTHONNOUSERSITE=1
+
   if [[ -n "${__JACI_ENV_CONDA_PREFIX}" && -x "${__JACI_ENV_CONDA_PREFIX}/bin/python" ]]; then
     export PATH="${__JACI_ENV_CONDA_PREFIX}/bin:${PATH}"
-    unset PYTHONHOME
-    unset PYTHONPATH
-    export PYTHONNOUSERSITE=1
-    hash -r 2>/dev/null || true
   fi
+
+  hash -r 2>/dev/null || true
+}
+
+__jaci_verify_python_environment() {
+  if [[ -z "${__JACI_ENV_CONDA_PREFIX}" ]]; then
+    echo "WARNING: no active Conda environment was detected before loading JACI."
+    echo "         PYTHONPATH was sanitized, but the current python command may"
+    echo "         still be supplied by spack-stack until Conda is activated."
+    return 0
+  fi
+
+  if [[ ! -x "${__JACI_ENV_CONDA_PREFIX}/bin/python" ]]; then
+    echo "ERRO: active CONDA_PREFIX has no python executable: ${__JACI_ENV_CONDA_PREFIX}"
+    return 1
+  fi
+
+  local __jaci_python
+  local __jaci_numpy
+  __jaci_python="$(command -v python 2>/dev/null || true)"
+
+  if [[ "${__jaci_python}" != "${__JACI_ENV_CONDA_PREFIX}/bin/python" ]]; then
+    echo "ERRO: Python isolation failed."
+    echo "Expected: ${__JACI_ENV_CONDA_PREFIX}/bin/python"
+    echo "Found:    ${__jaci_python:-<not found>}"
+    return 1
+  fi
+
+  if ! __jaci_numpy="$("${__JACI_ENV_CONDA_PREFIX}/bin/python" -c 'import numpy; print(numpy.__file__)' 2>/dev/null)"; then
+    echo "ERRO: NumPy cannot be imported by the active Conda Python."
+    return 1
+  fi
+
+  case "${__jaci_numpy}" in
+    "${__JACI_ENV_CONDA_PREFIX}"/*)
+      ;;
+    *)
+      echo "ERRO: Python/NumPy environments are mixed."
+      echo "Python: ${__jaci_python}"
+      echo "NumPy:  ${__jaci_numpy}"
+      echo "Expected NumPy below CONDA_PREFIX=${__JACI_ENV_CONDA_PREFIX}"
+      return 1
+      ;;
+  esac
 }
 
 if [[ -z "${STACK_ROOT:-}" ]]; then
@@ -64,14 +113,14 @@ if [[ -z "${STACK_ROOT:-}" ]]; then
   echo "Set it to the root of the spack-stack checkout/environment, for example:"
   echo "  export STACK_ROOT=/path/to/validated/spack-stack"
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_restore_conda_python
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
   return 1 2>/dev/null || exit 1
 fi
 
 if [[ ! -d "${STACK_ROOT}" ]]; then
   echo "ERRO: STACK_ROOT does not exist or is not a directory: ${STACK_ROOT}"
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_restore_conda_python
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
   return 1 2>/dev/null || exit 1
 fi
 
@@ -92,7 +141,7 @@ else
   echo "Set STACK_ROOT to a validated spack-stack checkout, for example:"
   echo "  export STACK_ROOT=/path/to/validated/spack-stack"
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_restore_conda_python
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
   return 1 2>/dev/null || exit 1
 fi
 
@@ -107,13 +156,18 @@ fi
 case ":${LOADEDMODULES:-}:" in
   *":${STACK_ENV_MODULE}:"*)
     if [[ "${__JACI_ENV_FORCE}" != "true" ]]; then
-      __jaci_restore_conda_python
+      __jaci_sanitize_python_environment
+      if ! __jaci_verify_python_environment; then
+        unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+        unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+        return 1 2>/dev/null || exit 1
+      fi
       echo "JACI MPAS-JEDI environment already loaded; not reloading."
       echo "STACK_ENV_MODULE=${STACK_ENV_MODULE}"
       echo "Python command=$(command -v python 2>/dev/null || true)"
       echo "PWD=$(pwd)"
       unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-      unset -f __jaci_restore_conda_python
+      unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
       return 0 2>/dev/null || exit 0
     fi
     ;;
@@ -125,7 +179,7 @@ if ! module purge; then
   echo "ERRO: module purge failed. Start a fresh shell and try again."
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_restore_conda_python
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
   return 1 2>/dev/null || exit 1
 fi
 
@@ -133,7 +187,7 @@ if ! cd "${STACK_ROOT}"; then
   echo "ERRO: cannot cd to STACK_ROOT=${STACK_ROOT}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_restore_conda_python
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
   return 1 2>/dev/null || exit 1
 fi
 
@@ -141,7 +195,7 @@ if ! source "${STACK_SITE_SETUP}"; then
   echo "ERRO: failed to source ${STACK_SITE_SETUP}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_restore_conda_python
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
   return 1 2>/dev/null || exit 1
 fi
 
@@ -149,7 +203,7 @@ if ! module use "${STACK_MODULE_ROOT}"; then
   echo "ERRO: failed to add module path ${STACK_MODULE_ROOT}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_restore_conda_python
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
   return 1 2>/dev/null || exit 1
 fi
 
@@ -158,14 +212,26 @@ if ! module load "${STACK_ENV_MODULE}"; then
   echo "The current module state may be inconsistent. Start a fresh shell before retrying."
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_restore_conda_python
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
   return 1 2>/dev/null || exit 1
 fi
 
-# If a Conda environment was active before loading the scientific runtime,
-# restore its Python command and prevent packages compiled for the spack-stack
-# Python from being imported by the Conda interpreter.
-__jaci_restore_conda_python
+# Always remove Python search paths injected by spack-stack. If Conda was
+# active before loading the scientific runtime, also restore its Python command.
+# This makes the result safe in both supported orders:
+#
+#   conda activate ... ; source load_jaci_env.sh
+#   source load_jaci_env.sh ; conda activate ...
+#
+# In the second order, Python becomes the Conda interpreter only after
+# activation, but it will no longer inherit spack-stack's PYTHONPATH.
+__jaci_sanitize_python_environment
+if ! __jaci_verify_python_environment; then
+  cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+  return 1 2>/dev/null || exit 1
+fi
 
 # Build/runtime compiler variables expected on JACI with CrayPE.
 export CC="${CC:-/opt/cray/pe/craype/2.7.33/bin/cc}"
@@ -187,13 +253,13 @@ export GNU_VERSION="${GNU_VERSION:-12.3}"
 cd "${__JACI_ENV_OLDPWD}" || {
   echo "ERRO: could not return to ${__JACI_ENV_OLDPWD}"
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_restore_conda_python
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
   return 1 2>/dev/null || exit 1
 }
 
 unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
 
-unset -f __jaci_restore_conda_python
+unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
 
 echo "Loaded JACI MPAS-JEDI environment"
 echo "STACK_ROOT=${STACK_ROOT}"
