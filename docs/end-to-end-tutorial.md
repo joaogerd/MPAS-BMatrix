@@ -77,11 +77,18 @@ conda create -n monan-jedi-bmatrix -c conda-forge \
   esmpy windspharm pytest ruff -y
 ```
 
-On later logins, only activate it:
+On every new JACI login, initialize Conda again and then activate the existing
+environment:
 
 ```bash
+module load anaconda
+start_conda
 conda activate monan-jedi-bmatrix
 ```
+
+Creating the environment is a one-time operation; initializing Conda with
+`module load anaconda` + `start_conda` is required again in a fresh JACI
+shell.
 
 For more detail about the Python/spack-stack isolation strategy, see
 [Installation on JACI](install-jaci.md).
@@ -189,7 +196,10 @@ git -C "$BMATRIX_ROOT" rev-parse HEAD
 ## 5. Load the JACI scientific environment
 
 ```bash
+module load anaconda
+start_conda
 conda activate monan-jedi-bmatrix
+
 cd "$BMATRIX_ROOT"
 source scripts/load_jaci_env.sh
 ```
@@ -206,11 +216,27 @@ command -v mpas-bmatrix
 python -c "import sys, numpy; print(sys.executable); print(numpy.__file__)"
 ```
 
-Expected: Python, NumPy, `mpaswf` and `mpas-bmatrix` all resolve through the
-active Conda environment.
+Expected:
 
-If Python comes from Conda but NumPy comes from a
-`spack-stack/.../site-packages` path, stop and start a new clean login shell.
+- `python`, `mpaswf` and `mpas-bmatrix` resolve through the active Conda
+  environment;
+- NumPy is loaded from a path below `$CONDA_PREFIX`;
+- `PYTHONPATH` is not set after `load_jaci_env.sh`.
+
+The loader removes Python search paths injected by spack-stack unconditionally.
+If a Conda environment was already active, it also verifies that both Python and
+NumPy belong to that environment and fails immediately if they are mixed.
+
+A direct checkpoint is:
+
+```bash
+printf 'CONDA_PREFIX=%s\n' "$CONDA_PREFIX"
+printf 'PYTHONPATH=%s\n' "${PYTHONPATH:-<not set>}"
+python -c "import sys, numpy; print('python =', sys.executable); print('numpy  =', numpy.__file__)"
+```
+
+For the supported Conda workflow, both printed paths must begin with
+`$CONDA_PREFIX`, and `PYTHONPATH` must print `<not set>`.
 
 ## 6. Inspect the two JACI configurations
 
@@ -242,8 +268,76 @@ grep -nE 'monan_jedi_root:|work_dir:|gfs_dir:|source:|bootstrap:|STACK_ROOT' \
   "$MPASWF_CONFIG"
 ```
 
+The `grep` above is only an inspection aid. It does **not** prove that the
+resolved files and directories exist for the current user.
+
+Run the MPASWF filesystem preflight before submitting anything:
+
+```bash
+mpaswf check-config --config "$MPASWF_CONFIG"
+```
+
+This expands user-specific values such as `$USER` and validates the
+resources actually consumed by the active workflow path. For the maintained
+JACI/x1.10242 case this includes:
+
+- the MONAN-JEDI installation root;
+- MPAS and WPS executables;
+- the WPS Vtable;
+- writable work/static/GFS directories;
+- the repository templates used by WPS and MPAS initialization;
+- the configured invariant, mesh, graph and 128-way partition;
+- the reference forecast namelist/streams and required `stream_list.*` files;
+- the installed MPAS physics tables used by the reference forecast;
+- explicit filesystem paths used by the PBS bootstrap.
+
+The preflight is path-aware: it does **not** require generic static templates
+when `static.source` supplies the validated invariant, and it does **not**
+require generic forecast templates when
+`validation.require_reference_preflight: true` selects the validated tutorial
+forecast runtime.
+
+The workflow/data directories `work_dir`, `static_dir`, and `gfs_dir` may
+legitimately be absent on a first run. They are reported as `CREATABLE` when
+their nearest existing parent is writable. Required scientific/runtime inputs
+must already exist and be readable.
+
+The human-readable output uses the same MPASWF terminal language as the other
+commands:
+
+```text
+✓ resource.name — OK
+· /resolved/path
+
+✗ resource.name — MISSING
+· /resolved/missing/path
+```
+
+A successful run ends with a summary equivalent to:
+
+```text
+✓ MPASWF config preflight: complete — <N> checks passed.
+```
+
+Do not continue to `pbs-smoke` if any `✗` line is present or if
+`check-config` returns a non-zero status.
+
+For a machine-readable report that can be attached to a test record:
+
+```bash
+mpaswf check-config --config "$MPASWF_CONFIG" --json \
+  > "$WORK_ROOT/mpaswf-config-preflight.json"
+
+python -m json.tool "$WORK_ROOT/mpaswf-config-preflight.json" >/dev/null
+```
+
+The `--json` form emits JSON only, with no human status prefix, so it can be
+consumed directly by `json.tool`, `jq`, CI jobs, or archived with the run
+record.
+
 Do not modify paths merely because they are configurable. Change them only when
-the declared resource does not exist or your site layout differs.
+the preflight identifies a missing/inaccessible resource or your site layout
+intentionally differs.
 
 ### 6.2 MPAS-BMatrix configuration
 
@@ -670,6 +764,8 @@ This condensed sequence assumes the Conda environment and both repositories are
 already installed and the shipped JACI paths are valid:
 
 ```bash
+module load anaconda
+start_conda
 conda activate monan-jedi-bmatrix
 
 export PROJECT_ROOT="/p/projetos/monan_das/$USER/projects"
@@ -689,6 +785,7 @@ source scripts/load_jaci_env.sh
 mpas-bmatrix check-config --config "$CONFIG" >/dev/null
 
 cd "$MPASWF_ROOT"
+mpaswf check-config --config "$MPASWF_CONFIG"
 mpaswf pbs-smoke --config "$MPASWF_CONFIG"
 mpaswf run --phase prepare --config "$MPASWF_CONFIG"
 mpaswf run --phase init --config "$MPASWF_CONFIG" --submit --wait

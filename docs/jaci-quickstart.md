@@ -8,7 +8,10 @@ Follow [install-jaci.md](install-jaci.md). The guide creates a Conda environment
 with Python 3.11 and installs both repositories. Confirm:
 
 ```bash
+module load anaconda
+start_conda
 conda activate monan-jedi-bmatrix
+
 mpaswf --help
 mpas-bmatrix --help
 python -c "import sys, numpy; print(sys.executable); print(numpy.__file__)"
@@ -16,6 +19,7 @@ python -c "import sys, numpy; print(sys.executable); print(numpy.__file__)"
 
 Both printed paths must belong to the active Conda environment. A Conda Python
 must not import NumPy from a `spack-stack/.../py-numpy-.../python3.11` path.
+After `source scripts/load_jaci_env.sh`, `PYTHONPATH` must also be unset.
 
 ## 2. Export the runtime/case roots
 
