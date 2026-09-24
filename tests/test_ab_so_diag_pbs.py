@@ -20,13 +20,13 @@ def test_so_diag_pbs_uses_one_cpu_and_isolated_workspace(tmp_path: Path, monkeyp
             "work_root": str(tmp_path / "work"),
         },
         "environment": {"loader": "scripts/load_jaci_env.sh", "variables": {}},
+        "install": {"root": str(tmp_path / "install")},
         "mesh": {"nproc": 128},
         "pbs": {
             "queues": {"bmatrix": "pesqmidi"},
             "walltime": {"bmatrix": "02:00:00"},
         },
     }
-    monkeypatch.setenv("MONAN_JEDI_INSTALL_ROOT", str(tmp_path / "install"))
     monkeypatch.delenv("BMATRIX_COMPARE_PYTHON", raising=False)
 
     workspace = prepare_so_diag_job(config, tmp_path / "vbal-case", top=7, log_lines=9)
@@ -36,6 +36,7 @@ def test_so_diag_pbs_uses_one_cpu_and_isolated_workspace(tmp_path: Path, monkeyp
     assert "select=1:ncpus=1:mpiprocs=1:ompthreads=1" in text
     assert "#PBS -q pesqmidi" in text
     assert str(diagnostic) in text
+    assert f"MONAN_JEDI_INSTALL_ROOT={tmp_path / 'install'}" in text
     assert "materialized/so" in text
     assert "in-memory/so" in text
     assert "--top 7" in text
