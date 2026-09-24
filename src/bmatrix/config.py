@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 import os
 import re
+import warnings
 
 import yaml
 
@@ -68,6 +69,11 @@ def _expand_runtime_alias(value: str) -> str:
     legacy = os.environ.get("MONAN_JEDI_INSTALL")
     if legacy is None:
         return value
+    warnings.warn(
+        "MONAN_JEDI_INSTALL is deprecated; use MONAN_JEDI_INSTALL_ROOT",
+        DeprecationWarning,
+        stacklevel=3,
+    )
     return value.replace("${MONAN_JEDI_INSTALL_ROOT}", legacy).replace("$MONAN_JEDI_INSTALL_ROOT", legacy)
 
 
