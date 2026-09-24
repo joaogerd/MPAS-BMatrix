@@ -142,4 +142,4 @@ def test_loader_reloads_same_module_name_from_stale_stack(tmp_path: Path) -> Non
     assert "stale or unverified" in result.stdout
     assert "MODULE_PURGE_COUNT=1" in result.stdout
     assert "MODULE_LOAD_COUNT=1" in result.stdout
-    assert f"ACTIVE_STACK_ROOT={_fake_stack(tmp_path).resolve()}" in result.stdout
+    assert f"ACTIVE_STACK_ROOT={(tmp_path / 'spack-stack').resolve()}" in result.stdout
