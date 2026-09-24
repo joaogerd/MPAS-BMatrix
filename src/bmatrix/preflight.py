@@ -23,6 +23,10 @@ def _path(value: object) -> Path:
     return Path(str(value)).expanduser()
 
 
+def _missing(name: str, kind: str = "path") -> ResourceCheck:
+    return ResourceCheck(name, "<unset>", kind, "NOT_CONFIGURED", False)
+
+
 def _file(name: str, path: Path, *, executable: bool = False) -> ResourceCheck:
     kind = "executable" if executable else "file"
     if not path.exists():
@@ -74,14 +78,23 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
     checks: list[ResourceCheck] = []
 
     project = _mapping(config, "project")
-    project_root = _path(project.get("project_root", ""))
-    work_root = _path(project.get("work_root", ""))
-    checks.append(_directory("project.project_root", project_root))
-    checks.append(_writable_directory("project.work_root", work_root))
+    project_root_value = project.get("project_root")
+    work_root_value = project.get("work_root")
+    project_root = _path(project_root_value) if project_root_value else None
+    if project_root is None:
+        checks.append(_missing("project.project_root", "directory"))
+    else:
+        checks.append(_directory("project.project_root", project_root))
+    if not work_root_value:
+        checks.append(_missing("project.work_root", "writable directory"))
+    else:
+        checks.append(_writable_directory("project.work_root", _path(work_root_value)))
 
     environment = _mapping(config, "environment")
     loader = str(environment.get("loader", ""))
-    if loader:
+    if not loader:
+        checks.append(_missing("environment.loader", "file"))
+    elif project_root is not None:
         loader_path = _path(loader)
         if not loader_path.is_absolute():
             loader_path = project_root / loader_path
@@ -89,7 +102,9 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
 
     variables = environment.get("variables", {})
     stack_root_value = variables.get("STACK_ROOT") if isinstance(variables, Mapping) else None
-    if stack_root_value:
+    if not stack_root_value:
+        checks.append(_missing("environment.variables.STACK_ROOT", "directory"))
+    else:
         stack_root = _path(stack_root_value)
         checks.append(_directory("environment.variables.STACK_ROOT", stack_root))
         checks.append(
@@ -114,26 +129,30 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
         checks.append(_directory("stack.module_root", module_root))
 
     install = _mapping(config, "install")
-    install_root = _path(install.get("root", ""))
-    checks.append(_directory("install.root", install_root))
-    checks.append(
-        _file(
-            "install.error_covariance_toolbox",
-            install_root / "bin" / "mpasjedi_error_covariance_toolbox.x",
-            executable=True,
+    install_root_value = install.get("root")
+    if not install_root_value:
+        checks.append(_missing("install.root", "directory"))
+    else:
+        install_root = _path(install_root_value)
+        checks.append(_directory("install.root", install_root))
+        checks.append(
+            _file(
+                "install.error_covariance_toolbox",
+                install_root / "bin" / "mpasjedi_error_covariance_toolbox.x",
+                executable=True,
+            )
         )
-    )
-    checks.append(
-        _file(
-            "install.variational",
-            install_root / "bin" / "mpasjedi_variational.x",
-            executable=True,
+        checks.append(
+            _file(
+                "install.variational",
+                install_root / "bin" / "mpasjedi_variational.x",
+                executable=True,
+            )
         )
-    )
-    atmosphere_share = _path(
-        install.get("atmosphere_share", install_root / "share/MPAS/core_atmosphere")
-    )
-    checks.append(_directory("install.atmosphere_share", atmosphere_share))
+        atmosphere_share = _path(
+            install.get("atmosphere_share", install_root / "share/MPAS/core_atmosphere")
+        )
+        checks.append(_directory("install.atmosphere_share", atmosphere_share))
 
     mesh = _mapping(config, "mesh")
     if mesh.get("grid"):
