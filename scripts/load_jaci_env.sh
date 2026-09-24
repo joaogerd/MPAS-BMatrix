@@ -181,16 +181,16 @@ if [[ -z "${STACK_MODULE_ROOT:-}" || ! -d "${STACK_MODULE_ROOT}" ]]; then
   export STACK_MODULE_ROOT="${STACK_ROOT}/envs/${STACK_ENV_NAME}/modules"
 fi
 
-# If already loaded, do not reload. Reloading the full stack on top of itself can
-# trigger module conflicts such as gcc-native/12.3 versus Spack gcc/12.3.0/*
-# package modules and can leave cc/ftn with broken MPI pkg-config metadata.
+# Reuse is safe only when both the module name and the recorded stack identity
+# match the selected root/module tree. Two spack-stack installations may publish
+# the same module name, so an unverified or stale identity forces a clean reload.
 case ":${LOADEDMODULES:-}:" in
   *":${STACK_ENV_MODULE}:"*)
     if [[ "${__JACI_ENV_FORCE}" != "true" ]] && __jaci_stack_identity_matches; then
       __jaci_sanitize_python_environment
       if ! __jaci_verify_python_environment; then
         unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-        unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
+        unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
         return 1 2>/dev/null || exit 1
       fi
       echo "JACI MPAS-JEDI environment already loaded from selected stack; not reloading."
@@ -199,7 +199,7 @@ case ":${LOADEDMODULES:-}:" in
       echo "Python command=$(command -v python 2>/dev/null || true)"
       echo "PWD=$(pwd)"
       unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-      unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
+      unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
       return 0 2>/dev/null || exit 0
     fi
     echo "WARNING: matching module name is loaded but stack identity is stale or unverified; reloading selected STACK_ROOT."
