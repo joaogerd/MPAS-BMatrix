@@ -52,14 +52,14 @@ The following paths are concrete JACI examples. The expression $USER is replaced
 automatically by the login name of the person running the command.
 
 ~~~bash
-export PROJECT_ROOT="/p/projetos/monan_das/$USER/projects"
+export REPOS_ROOT="/p/projetos/monan_das/$USER/projects"
 export WORK_ROOT="/p/projetos/monan_das/$USER/work/MPAS-BMatrix"
 
-mkdir -p "$PROJECT_ROOT" "$WORK_ROOT"
-cd "$PROJECT_ROOT"
+mkdir -p "$REPOS_ROOT" "$WORK_ROOT"
+cd "$REPOS_ROOT"
 ~~~
 
-PROJECT_ROOT stores the program source. WORK_ROOT stores calculations, logs and
+REPOS_ROOT stores source checkouts. WORK_ROOT stores calculations, logs and
 scientific products.
 
 ## 5. Obtain the two repositories
@@ -68,8 +68,8 @@ scientific products.
 git clone https://github.com/joaogerd/mpaswf.git
 git clone https://github.com/joaogerd/MPAS-BMatrix.git
 
-export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
-export BMATRIX_ROOT="$PROJECT_ROOT/MPAS-BMatrix"
+export MPASWF_ROOT="$REPOS_ROOT/mpaswf"
+export BMATRIX_ROOT="$REPOS_ROOT/MPAS-BMatrix"
 ~~~
 
 If a repository already exists, do not clone it again. Enter its directory and
