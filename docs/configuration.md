@@ -54,7 +54,8 @@ MONAN_JEDI_UNBALANCE_EXE
 ```
 
 The historical `MONAN_JEDI_INSTALL` variable is accepted as a compatibility
-alias if `MONAN_JEDI_INSTALL_ROOT` is not defined.
+alias if `MONAN_JEDI_INSTALL_ROOT` is not defined and emits a deprecation
+warning. New scripts must export only `MONAN_JEDI_INSTALL_ROOT`.
 
 ## MONAN-JEDI runtime ownership
 
@@ -157,6 +158,14 @@ After changing configuration:
 mpas-bmatrix check-config --config configs/jaci-x1.10242.yaml
 ```
 
-The resolved output records `configuration_sources`, `bmatrix_contract_path`, and
-`bmatrix_contract_sources`. Any unresolved `${VARIABLE}` is rejected before a
-PBS job is generated.
+`check-config` is a side-effect-free preflight. In addition to composing the
+YAML, it verifies the public MONAN-JEDI install, required JEDI/SABER executables,
+MPAS runtime share directory, selected `STACK_ROOT`, stack setup/module tree,
+repository loader, work-area writability, mesh/partition, invariant and installed
+MPAS-JEDI namelists. Missing mandatory resources make the command return non-zero
+before any scientific job is rendered or submitted.
+
+The JSON output preserves the resolved configuration and adds a `preflight`
+section with per-resource status. It also records `configuration_sources`,
+`bmatrix_contract_path`, and `bmatrix_contract_sources`. Any unresolved
+`${VARIABLE}` is rejected before filesystem validation.
