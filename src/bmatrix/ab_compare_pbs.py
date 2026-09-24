@@ -92,9 +92,10 @@ def prepare_compare_job(
         raise ValueError("project.project_root é obrigatório para o job de comparação A/B.")
     project_root = Path(str(project["project_root"])).resolve()
 
-    install_root = os.environ.get("MONAN_JEDI_INSTALL_ROOT")
-    if not install_root:
-        raise RuntimeError("MONAN_JEDI_INSTALL_ROOT deve estar definido antes de preparar a comparação A/B.")
+    install = config.get("install", {})
+    if not isinstance(install, Mapping) or not install.get("root"):
+        raise ValueError("install.root é obrigatório para o job de comparação A/B.")
+    install_root = str(install["root"])
 
     resolved_config = Path(config_path).resolve()
     command_args = [
