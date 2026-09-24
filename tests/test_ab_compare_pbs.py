@@ -20,6 +20,7 @@ def _config(tmp_path: Path) -> tuple[dict[str, object], Path, Path]:
             "work_root": str(tmp_path / "work"),
         },
         "environment": {"loader": "scripts/load_jaci_env.sh", "variables": {}},
+        "install": {"root": str(tmp_path / "install")},
         "mesh": {"nproc": 128},
         "pbs": {
             "queues": {"bmatrix": "pesqmidi"},
@@ -57,7 +58,6 @@ def test_compare_pbs_uses_one_cpu_and_absolute_runtime_contract(
     tmp_path: Path, monkeypatch
 ) -> None:
     config, project_root, config_path = _config(tmp_path)
-    monkeypatch.setenv("MONAN_JEDI_INSTALL_ROOT", str(tmp_path / "install"))
     monkeypatch.delenv("BMATRIX_COMPARE_PYTHON", raising=False)
 
     workspace = prepare_compare_job(config, config_path, tmp_path / "vbal-case")
@@ -81,7 +81,6 @@ def test_compare_pbs_uses_one_cpu_and_absolute_runtime_contract(
 
 def test_compare_pbs_accepts_explicit_shared_python_override(tmp_path: Path, monkeypatch) -> None:
     config, _, config_path = _config(tmp_path)
-    monkeypatch.setenv("MONAN_JEDI_INSTALL_ROOT", str(tmp_path / "install"))
     shared_python = tmp_path / "shared" / "bin" / "python"
     monkeypatch.setenv("BMATRIX_COMPARE_PYTHON", str(shared_python))
 
