@@ -35,9 +35,10 @@ def prepare_so_diag_job(
     if not script.is_file():
         raise FileNotFoundError(f"comparador SO não encontrado: {script}")
 
-    install_root = os.environ.get("MONAN_JEDI_INSTALL_ROOT")
-    if not install_root:
-        raise RuntimeError("MONAN_JEDI_INSTALL_ROOT deve estar definido antes do diagnóstico SO A/B.")
+    install = config.get("install", {})
+    if not isinstance(install, Mapping) or not install.get("root"):
+        raise ValueError("install.root é obrigatório para o diagnóstico SO A/B.")
+    install_root = str(install["root"])
 
     command_args = [
         str(script),
