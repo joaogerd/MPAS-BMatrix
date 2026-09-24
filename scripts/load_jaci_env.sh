@@ -177,6 +177,17 @@ else
 fi
 
 export STACK_ROOT
+
+# STACK_MODULE_ROOT may have been exported by a previously selected stack. When
+# its value is exactly the recorded old active module tree and STACK_ROOT has
+# changed, treat it as stale state rather than as an intentional user override.
+if [[ -n "${STACK_MODULE_ROOT:-}" && -n "${MONAN_JEDI_ACTIVE_STACK_ROOT:-}" && -n "${MONAN_JEDI_ACTIVE_STACK_MODULE_ROOT:-}" ]]; then
+  if [[ "$(__jaci_normalize_path "${STACK_MODULE_ROOT}")" == "${MONAN_JEDI_ACTIVE_STACK_MODULE_ROOT}" ]] && \
+     [[ "$(__jaci_normalize_path "${STACK_ROOT}")" != "${MONAN_JEDI_ACTIVE_STACK_ROOT}" ]]; then
+    unset STACK_MODULE_ROOT
+  fi
+fi
+
 if [[ -z "${STACK_MODULE_ROOT:-}" || ! -d "${STACK_MODULE_ROOT}" ]]; then
   export STACK_MODULE_ROOT="${STACK_ROOT}/envs/${STACK_ENV_NAME}/modules"
 fi
