@@ -264,7 +264,7 @@ name into the YAML.
 Inspect the fields that are most likely to vary:
 
 ```bash
-grep -nE 'monan_jedi_root:|work_dir:|gfs_dir:|source:|bootstrap:|STACK_ROOT' \
+grep -nE 'monan_jedi_install_root:|work_dir:|gfs_dir:|source:|bootstrap:|STACK_ROOT' \
   "$MPASWF_CONFIG"
 ```
 
