@@ -80,6 +80,7 @@ module() {{
 }}
 
 export STACK_ROOT={stack_root!s}
+unset STACK_MODULE_ROOT STACK_ENV_NAME STACK_SITE_SETUP STACK_ENV_MODULE JACI_FORCE_RELOAD
 export LOADEDMODULES={loaded!r}
 export MONAN_JEDI_ACTIVE_STACK_ROOT={active_root!r}
 export MONAN_JEDI_ACTIVE_STACK_MODULE_ROOT={active_module_root!r}
@@ -109,6 +110,7 @@ printf 'ACTIVE_STACK_ROOT=%s\n' "${{MONAN_JEDI_ACTIVE_STACK_ROOT-__UNSET__}}"
         check=False,
     )
 
+
 def test_loader_removes_spack_pythonpath_after_module_load(tmp_path: Path) -> None:
     result = _run_loader(tmp_path, already_loaded=False)
 
@@ -123,7 +125,6 @@ def test_loader_removes_pythonpath_when_stack_is_already_loaded(tmp_path: Path) 
     assert result.returncode == 0, result.stderr or result.stdout
     assert "RESULT_PYTHONPATH=__UNSET__" in result.stdout
     assert "RESULT_PYTHONNOUSERSITE=1" in result.stdout
-
 
 
 def test_loader_reuses_only_matching_stack_identity(tmp_path: Path) -> None:
