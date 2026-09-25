@@ -169,3 +169,18 @@ The JSON output preserves the resolved configuration and adds a `preflight`
 section with per-resource status. It also records `configuration_sources`,
 `bmatrix_contract_path`, and `bmatrix_contract_sources`. Any unresolved
 `${VARIABLE}` is rejected before filesystem validation.
+
+
+### Physical preflight details
+
+The preflight requires the resources needed by the maintained production chain:
+the MPAS grid and graph, the partition directory and rank-matched partition,
+the invariant state, tutorial/runtime support directory, `geovars.yaml` and
+`keptvars.yaml`. Omitted mandatory entries are reported as `NOT_CONFIGURED`.
+
+The partition filename is derived from the configured graph basename exactly as
+the VBAL static staging code does: `<graph basename>.part.<mesh.nproc>`.
+
+For `STACK_ROOT`, the preflight follows the loader contract and accepts either
+the spack-stack checkout itself or its immediate parent containing a
+`spack-stack/` child.
