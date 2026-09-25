@@ -6,6 +6,9 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from .config import runtime_contract
+from .errors import ConfigurationError
+
 
 @dataclass(frozen=True)
 class ResourceCheck:
@@ -101,51 +104,39 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
     else:
         checks.append(_writable_directory("project.work_root", _path(work_root_value)))
 
-    environment = _mapping(config, "environment")
-    loader = str(environment.get("loader", ""))
-    if not loader:
-        checks.append(_missing("environment.loader", "file"))
-    elif project_root is not None:
-        loader_path = _path(loader)
-        if not loader_path.is_absolute():
-            loader_path = project_root / loader_path
-        checks.append(_file("environment.loader", loader_path))
-
-    variables = environment.get("variables", {})
-    stack_root_value = variables.get("STACK_ROOT") if isinstance(variables, Mapping) else None
-    if not stack_root_value:
-        checks.append(_missing("environment.variables.STACK_ROOT", "directory"))
-    else:
-        stack_root = _normalized_stack_root(_path(stack_root_value))
-        checks.append(_directory("environment.variables.STACK_ROOT", stack_root))
-        checks.append(
-            _file(
-                "stack.site_setup",
-                stack_root / "configs/sites/tier2/jaci/setup.sh",
-            )
-        )
-        env_name = str(
-            variables.get("STACK_ENV_NAME", "jaci-mpas-jedi-gcc12-craympich")
-            if isinstance(variables, Mapping)
-            else "jaci-mpas-jedi-gcc12-craympich"
-        )
-        module_root_value = (
-            variables.get("STACK_MODULE_ROOT") if isinstance(variables, Mapping) else None
-        )
-        module_root = (
-            _path(module_root_value)
-            if module_root_value
-            else stack_root / "envs" / env_name / "modules"
-        )
-        checks.append(_directory("stack.module_root", module_root))
-
     install = _mapping(config, "install")
     install_root_value = install.get("root")
+    contract: Mapping[str, object] | None = None
     if not install_root_value:
         checks.append(_missing("install.root", "directory"))
     else:
         install_root = _path(install_root_value)
         checks.append(_directory("install.root", install_root))
+        manifest = install_root / "share/monan-jedi/install-manifest.json"
+        checks.append(_file("install.runtime_contract", manifest))
+        if manifest.is_file():
+            try:
+                contract = runtime_contract(config)
+            except ConfigurationError:
+                checks.append(
+                    ResourceCheck(
+                        "install.runtime_contract_v2",
+                        str(manifest),
+                        "ecosystem contract v2",
+                        "INVALID",
+                        False,
+                    )
+                )
+            else:
+                checks.append(
+                    ResourceCheck(
+                        "install.runtime_contract_v2",
+                        str(manifest),
+                        "ecosystem contract v2",
+                        "OK",
+                        True,
+                    )
+                )
         checks.append(
             _file(
                 "install.error_covariance_toolbox",
@@ -164,6 +155,38 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
             install.get("atmosphere_share", install_root / "share/MPAS/core_atmosphere")
         )
         checks.append(_directory("install.atmosphere_share", atmosphere_share))
+
+    environment = _mapping(config, "environment")
+    loader = str(environment.get("loader", ""))
+    if not loader:
+        checks.append(_missing("environment.loader", "file"))
+    elif project_root is not None:
+        loader_path = _path(loader)
+        if not loader_path.is_absolute():
+            loader_path = project_root / loader_path
+        checks.append(_file("environment.loader", loader_path))
+
+    variables = environment.get("variables", {})
+    stack_root_value = variables.get("STACK_ROOT") if isinstance(variables, Mapping) else None
+    if not stack_root_value:
+        checks.append(_missing("environment.variables.STACK_ROOT", "directory"))
+    else:
+        stack_root = _normalized_stack_root(_path(stack_root_value))
+        checks.append(_directory("environment.variables.STACK_ROOT", stack_root))
+        if contract is not None:
+            stack_contract = contract.get("stack")
+            if isinstance(stack_contract, Mapping):
+                site_setup = str(stack_contract["site_setup"])
+                env_name = str(stack_contract["env_name"])
+                module_template = str(stack_contract["module_root_template"])
+                checks.append(
+                    _file(
+                        "stack.site_setup",
+                        stack_root / site_setup,
+                    )
+                )
+                module_root = stack_root / module_template.format(env_name=env_name)
+                checks.append(_directory("stack.module_root", module_root))
 
     mesh = _mapping(config, "mesh")
     grid_value = mesh.get("grid")
