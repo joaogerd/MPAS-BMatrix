@@ -1,5 +1,7 @@
 # MPAS-BMatrix
 
+<!-- ecosystem-runtime-standard-v2 -->
+
 `MPAS-BMatrix` is the INPE/MONAN workflow for building, validating and
 diagnosing static MPAS-JEDI/SABER/BUMP background-error covariance products.
 
