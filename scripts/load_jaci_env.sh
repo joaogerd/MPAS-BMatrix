@@ -159,30 +159,49 @@ fi
 # Legacy defaults remain only for older installations without contract v2.
 __JACI_CONTRACT_MANIFEST="${MONAN_JEDI_INSTALL_ROOT:-}/share/monan-jedi/install-manifest.json"
 if [[ -n "${MONAN_JEDI_INSTALL_ROOT:-}" && -f "${__JACI_CONTRACT_MANIFEST}" ]]; then
-  if command -v python3 >/dev/null 2>&1; then
-    mapfile -t __JACI_CONTRACT_VALUES < <(
-      python3 - "${__JACI_CONTRACT_MANIFEST}" <<'PY'
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "ERRO: python3 is required to read the MONAN-JEDI runtime contract." >&2
+    return 1 2>/dev/null || exit 1
+  fi
+
+  __JACI_CONTRACT_OUTPUT="$(
+    python3 - "${__JACI_CONTRACT_MANIFEST}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 if payload.get("ecosystem_contract_version") != 2:
-    raise SystemExit(2)
-stack = payload["stack"]
+    raise SystemExit("ecosystem_contract_version must be 2")
+if payload.get("contract") != "monan-jedi-runtime-v2":
+    raise SystemExit("unsupported runtime contract identifier")
+stack = payload.get("stack")
+if not isinstance(stack, dict):
+    raise SystemExit("runtime contract stack block is missing")
+for key in ("env_name", "site_setup", "env_module", "module_root_template"):
+    if not isinstance(stack.get(key), str) or not stack[key]:
+        raise SystemExit(f"runtime contract stack.{key} is invalid")
 print(stack["env_name"])
 print(stack["site_setup"])
 print(stack["env_module"])
 print(stack["module_root_template"])
 PY
-    )
-    if [[ "${#__JACI_CONTRACT_VALUES[@]}" -eq 4 ]]; then
-      export STACK_ENV_NAME="${STACK_ENV_NAME:-${__JACI_CONTRACT_VALUES[0]}}"
-      export STACK_SITE_SETUP="${STACK_SITE_SETUP:-${__JACI_CONTRACT_VALUES[1]}}"
-      export STACK_ENV_MODULE="${STACK_ENV_MODULE:-${__JACI_CONTRACT_VALUES[2]}}"
-      __JACI_CONTRACT_MODULE_TEMPLATE="${__JACI_CONTRACT_VALUES[3]}"
-    fi
+  )" || {
+    echo "ERRO: invalid MONAN-JEDI runtime contract: ${__JACI_CONTRACT_MANIFEST}" >&2
+    unset __JACI_CONTRACT_OUTPUT
+    return 1 2>/dev/null || exit 1
+  }
+
+  mapfile -t __JACI_CONTRACT_VALUES <<< "${__JACI_CONTRACT_OUTPUT}"
+  unset __JACI_CONTRACT_OUTPUT
+  if [[ "${#__JACI_CONTRACT_VALUES[@]}" -ne 4 ]]; then
+    echo "ERRO: incomplete MONAN-JEDI runtime contract stack identity." >&2
+    return 1 2>/dev/null || exit 1
   fi
+  export STACK_ENV_NAME="${STACK_ENV_NAME:-${__JACI_CONTRACT_VALUES[0]}}"
+  export STACK_SITE_SETUP="${STACK_SITE_SETUP:-${__JACI_CONTRACT_VALUES[1]}}"
+  export STACK_ENV_MODULE="${STACK_ENV_MODULE:-${__JACI_CONTRACT_VALUES[2]}}"
+  __JACI_CONTRACT_MODULE_TEMPLATE="${__JACI_CONTRACT_VALUES[3]}"
 fi
 
 if [[ -z "${STACK_ENV_NAME:-}" || -z "${STACK_SITE_SETUP:-}" || -z "${STACK_ENV_MODULE:-}" ]]; then
