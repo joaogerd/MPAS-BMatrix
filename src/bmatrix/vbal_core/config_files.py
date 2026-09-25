@@ -6,7 +6,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, render_pbs
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
 from ..scientific_config import (
     bflow_sample_stem,
     normalize_control,
@@ -107,6 +107,6 @@ def write_vbal_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
         config,
         name="mpasjediBTrainingVBAL",
         run_dir=directory,
-        command=("mpiexec", "-n", str(ranks), str(toolbox_exe(config)), "./run_vbal.yaml", "./run_vbal.runlog"),
+        command=mpi_command(config, ranks, str(toolbox_exe(config)), "./run_vbal.yaml", "./run_vbal.runlog"),
     )
     write_text(directory / "qsub_vbal.bash", render_pbs(spec))
