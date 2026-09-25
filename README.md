@@ -137,3 +137,9 @@ python -m pytest -p no:cacheprovider -q
 python -m ruff check src/bmatrix tests
 git diff --check
 ```
+
+
+The `check-config` preflight mirrors the real runtime consumers: partition lookup
+uses the configured graph basename, mandatory static/mesh resources cannot be
+silently omitted, and `STACK_ROOT` may name either the checkout or its immediate
+parent containing `spack-stack/`.
