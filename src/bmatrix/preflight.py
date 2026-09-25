@@ -73,6 +73,17 @@ def _mapping(config: Mapping[str, object], key: str) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
 
 
+def _normalized_stack_root(path: Path) -> Path:
+    """Accept either the spack-stack checkout or its immediate parent."""
+    setup_relative = Path("configs/sites/tier2/jaci/setup.sh")
+    if (path / setup_relative).is_file():
+        return path
+    child = path / "spack-stack"
+    if (child / setup_relative).is_file():
+        return child
+    return path
+
+
 def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
     """Validate the filesystem/runtime resources knowable before scientific work."""
     checks: list[ResourceCheck] = []
@@ -105,7 +116,7 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
     if not stack_root_value:
         checks.append(_missing("environment.variables.STACK_ROOT", "directory"))
     else:
-        stack_root = _path(stack_root_value)
+        stack_root = _normalized_stack_root(_path(stack_root_value))
         checks.append(_directory("environment.variables.STACK_ROOT", stack_root))
         checks.append(
             _file(
@@ -155,28 +166,77 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
         checks.append(_directory("install.atmosphere_share", atmosphere_share))
 
     mesh = _mapping(config, "mesh")
-    if mesh.get("grid"):
-        checks.append(_file("mesh.grid", _path(mesh["grid"])))
-    if mesh.get("graph"):
-        checks.append(_file("mesh.graph", _path(mesh["graph"])))
-    if mesh.get("partitions_dir"):
-        partitions_dir = _path(mesh["partitions_dir"])
+    grid_value = mesh.get("grid")
+    graph_value = mesh.get("graph")
+    partitions_value = mesh.get("partitions_dir")
+    nproc_value = mesh.get("nproc")
+
+    if not grid_value:
+        checks.append(_missing("mesh.grid", "file"))
+    else:
+        checks.append(_file("mesh.grid", _path(grid_value)))
+
+    if not graph_value:
+        checks.append(_missing("mesh.graph", "file"))
+    else:
+        checks.append(_file("mesh.graph", _path(graph_value)))
+
+    if not partitions_value:
+        checks.append(_missing("mesh.partitions_dir", "directory"))
+    else:
+        partitions_dir = _path(partitions_value)
         checks.append(_directory("mesh.partitions_dir", partitions_dir))
-        if mesh.get("name") and mesh.get("nproc"):
-            partition = partitions_dir / (
-                f"{mesh['name']}.graph.info.part.{int(mesh['nproc'])}"
-            )
-            checks.append(_file("mesh.partition", partition))
+        if nproc_value is None:
+            checks.append(_missing("mesh.nproc", "integer"))
+        elif graph_value:
+            try:
+                nproc = int(nproc_value)
+            except (TypeError, ValueError):
+                checks.append(
+                    ResourceCheck(
+                        "mesh.nproc",
+                        str(nproc_value),
+                        "positive integer",
+                        "INVALID",
+                        False,
+                    )
+                )
+            else:
+                if nproc < 1:
+                    checks.append(
+                        ResourceCheck(
+                            "mesh.nproc",
+                            str(nproc_value),
+                            "positive integer",
+                            "INVALID",
+                            False,
+                        )
+                    )
+                else:
+                    checks.append(
+                        ResourceCheck("mesh.nproc", str(nproc), "positive integer", "OK", True)
+                    )
+                    partition = partitions_dir / (
+                        f"{Path(str(graph_value)).name}.part.{nproc}"
+                    )
+                    checks.append(_file("mesh.partition", partition))
 
     static = _mapping(config, "static")
     for key in ("invariant", "geovars", "keptvars"):
-        if static.get(key):
-            checks.append(_file(f"static.{key}", _path(static[key])))
-    if static.get("tutorial_physics_files"):
+        value = static.get(key)
+        if not value:
+            checks.append(_missing(f"static.{key}", "file"))
+        else:
+            checks.append(_file(f"static.{key}", _path(value)))
+
+    physics_value = static.get("tutorial_physics_files")
+    if not physics_value:
+        checks.append(_missing("static.tutorial_physics_files", "directory"))
+    else:
         checks.append(
             _directory(
                 "static.tutorial_physics_files",
-                _path(static["tutorial_physics_files"]),
+                _path(physics_value),
             )
         )
 
