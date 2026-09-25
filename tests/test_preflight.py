@@ -103,3 +103,66 @@ def test_preflight_fails_early_for_missing_runtime_executable(tmp_path: Path) ->
     assert payload["valid"] is False
     checks = {item["name"]: item for item in payload["checks"]}
     assert checks["install.variational"]["status"] == "MISSING"
+
+
+
+def test_preflight_rejects_omitted_mandatory_static_and_mesh_resources(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    mesh = config["mesh"]  # type: ignore[index]
+    static = config["static"]  # type: ignore[index]
+    del mesh["graph"]  # type: ignore[index]
+    del mesh["partitions_dir"]  # type: ignore[index]
+    del static["invariant"]  # type: ignore[index]
+    del static["geovars"]  # type: ignore[index]
+    del static["keptvars"]  # type: ignore[index]
+    del static["tutorial_physics_files"]  # type: ignore[index]
+
+    payload = preflight_payload(config)
+
+    assert payload["valid"] is False
+    checks = {item["name"]: item for item in payload["checks"]}
+    for name in (
+        "mesh.graph",
+        "mesh.partitions_dir",
+        "static.invariant",
+        "static.geovars",
+        "static.keptvars",
+        "static.tutorial_physics_files",
+    ):
+        assert checks[name]["status"] == "NOT_CONFIGURED"
+
+
+def test_preflight_partition_name_follows_graph_basename(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    mesh = config["mesh"]  # type: ignore[index]
+    graph = Path(str(mesh["graph"]))  # type: ignore[index]
+    custom_graph = graph.with_name("custom.graph.info")
+    graph.rename(custom_graph)
+    mesh["graph"] = str(custom_graph)  # type: ignore[index]
+    partitions = Path(str(mesh["partitions_dir"]))  # type: ignore[index]
+    old_partition = partitions / "x1.test.graph.info.part.4"
+    custom_partition = partitions / "custom.graph.info.part.4"
+    old_partition.rename(custom_partition)
+
+    payload = preflight_payload(config)
+
+    assert payload["valid"] is True
+    checks = {item["name"]: item for item in payload["checks"]}
+    assert checks["mesh.partition"]["path"] == str(custom_partition)
+    assert checks["mesh.partition"]["status"] == "OK"
+
+
+def test_preflight_accepts_parent_of_spack_stack_checkout(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    variables = config["environment"]["variables"]  # type: ignore[index]
+    checkout = Path(str(variables["STACK_ROOT"]))  # type: ignore[index]
+    parent = checkout.parent
+    variables["STACK_ROOT"] = str(parent)  # type: ignore[index]
+
+    payload = preflight_payload(config)
+
+    assert payload["valid"] is True
+    checks = {item["name"]: item for item in payload["checks"]}
+    assert checks["environment.variables.STACK_ROOT"]["path"] == str(checkout)
+    assert checks["stack.site_setup"]["status"] == "OK"
+    assert checks["stack.module_root"]["status"] == "OK"
