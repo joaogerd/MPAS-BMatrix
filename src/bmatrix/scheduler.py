@@ -70,6 +70,32 @@ def _configured_runtime_environment(environment: Mapping[str, object]) -> dict[s
     return result
 
 
+def mpi_command(
+    config: Mapping[str, object],
+    mpi_ranks: int,
+    *arguments: object,
+) -> tuple[str, ...]:
+    """Build one MPI argv from the site scheduler configuration.
+
+    pbs.launcher is an optional list of argv tokens and may use the
+    {mpi_ranks} placeholder. The portable default is mpiexec -n {mpi_ranks}.
+    Scientific stages provide only their executable and arguments, so launcher
+    policy has one owner.
+    """
+    pbs = config.get("pbs", {})
+    if not isinstance(pbs, Mapping):
+        raise ValueError("pbs deve ser um bloco YAML.")
+    raw = pbs.get("launcher", ["mpiexec", "-n", "{mpi_ranks}"])
+    if not isinstance(raw, list) or not raw or not all(
+        isinstance(item, str) and item for item in raw
+    ):
+        raise ValueError("pbs.launcher deve ser uma lista não vazia de strings.")
+    launcher = tuple(
+        item.replace("{mpi_ranks}", str(mpi_ranks))
+        for item in raw
+    )
+    return (*launcher, *(str(item) for item in arguments))
+
 def bmatrix_job_spec(
     config: Mapping[str, object],
     *,
