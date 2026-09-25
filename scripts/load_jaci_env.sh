@@ -285,9 +285,9 @@ if ! __jaci_verify_python_environment; then
 fi
 
 # Build/runtime compiler variables expected on JACI with CrayPE.
-export CC="${CC:-/opt/cray/pe/craype/2.7.33/bin/cc}"
-export CXX="${CXX:-/opt/cray/pe/craype/2.7.33/bin/CC}"
-export FC="${FC:-/opt/cray/pe/craype/2.7.33/bin/ftn}"
+export CC="${CC:-cc}"
+export CXX="${CXX:-CC}"
+export FC="${FC:-ftn}"
 export F77="${F77:-${FC}}"
 export F90="${F90:-${FC}}"
 
