@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, render_pbs
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
 from ..scientific_config import (
     control_aliases,
     control_code_names,
@@ -208,7 +208,7 @@ def write_so_pbs(config: Mapping[str, Any], run_dir: str | Path, variant: str = 
         config,
         name=f"SO_{variant}",
         run_dir=directory,
-        command=("mpiexec", "-n", str(ranks), str(variational_exe(config)), f"./{artifacts['yaml']}", f"./{artifacts['runlog']}"),
+        command=mpi_command(config, ranks, str(variational_exe(config)), f"./{artifacts['yaml']}", f"./{artifacts['runlog']}"),
         stdout=artifacts["stdout"],
         stderr=artifacts["stderr"],
     )
