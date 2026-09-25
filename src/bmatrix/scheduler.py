@@ -6,6 +6,8 @@ from pathlib import Path
 import shlex
 from typing import Mapping, Sequence
 
+from .config import runtime_contract
+
 
 @dataclass(frozen=True, slots=True)
 class ResourceRequest:
@@ -93,8 +95,27 @@ def bmatrix_job_spec(
     project_root = str(project["project_root"])
 
     runtime_environment = _configured_runtime_environment(environment)
+
+    # Stack identity is owned by the installed MONAN-JEDI runtime contract.
+    # Generated PBS jobs export it explicitly before sourcing the repository
+    # loader, so compute nodes cannot drift to the loader's legacy defaults.
+    contract = runtime_contract(config)
+    stack_contract = contract["stack"]
+    stack_root = runtime_environment.get("STACK_ROOT")
+    if not stack_root:
+        raise ValueError("environment.variables.STACK_ROOT é obrigatório.")
+    install = config.get("install", {})
+    if not isinstance(install, Mapping) or not install.get("root"):
+        raise ValueError("install.root é obrigatório.")
+    env_name = str(stack_contract["env_name"])
+    module_root = str(Path(stack_root) / str(stack_contract["module_root_template"]).format(env_name=env_name))
     runtime_environment.update(
         {
+            "MONAN_JEDI_INSTALL_ROOT": str(install["root"]),
+            "STACK_ENV_NAME": env_name,
+            "STACK_SITE_SETUP": str(stack_contract["site_setup"]),
+            "STACK_ENV_MODULE": str(stack_contract["env_module"]),
+            "STACK_MODULE_ROOT": module_root,
             "OMP_NUM_THREADS": "1",
             "GFORTRAN_CONVERT_UNIT": "big_endian:101-200",
             "FI_CXI_RX_MATCH_MODE": "hybrid",
@@ -103,7 +124,11 @@ def bmatrix_job_spec(
 
     bootstrap = tuple(
         [
-            *(f"export {name}={shlex.quote(value)}" for name, value in _configured_runtime_environment(environment).items()),
+            *(
+                f"export {name}={shlex.quote(value)}"
+                for name, value in runtime_environment.items()
+                if name.startswith("STACK_") or name == "MONAN_JEDI_INSTALL_ROOT"
+            ),
             f"source {shlex.quote(str(Path(project_root) / loader))}",
         ]
     )
