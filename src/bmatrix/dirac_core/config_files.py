@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, render_pbs
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
 from ..scientific_config import (
     control_aliases,
     control_code_names,
@@ -203,10 +203,9 @@ def write_dirac_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
         config,
         name="DiracTest",
         run_dir=directory,
-        command=(
-            "mpiexec",
-            "-n",
-            str(ranks),
+        command=mpi_command(
+            config,
+            ranks,
             str(toolbox_exe(config)),
             "./run_dirac.yaml",
             "./run_dirac.runlog",
