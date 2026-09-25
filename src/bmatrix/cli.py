@@ -11,6 +11,7 @@ from .config import load_config
 from .errors import BMatrixError
 from .nmc_core.checks import validate_manifest as validate_nmc_manifest
 from .pipeline import BuildRequest, STAGES, build, generate_weights, plan, validate
+from .preflight import preflight_payload
 from .plots_core.runner import generate_plots
 
 DEFAULT_CONFIG = "configs/jaci-x1.10242.yaml"
@@ -125,8 +126,11 @@ def _request(args: argparse.Namespace, *, dry_run: bool = False) -> BuildRequest
 
 
 def _check_config(args: argparse.Namespace) -> int:
-    print(json.dumps(load_config(args.config), indent=2, default=str, sort_keys=True))
-    return 0
+    config = load_config(args.config)
+    preflight = preflight_payload(config)
+    payload = {**config, "preflight": preflight}
+    print(json.dumps(payload, indent=2, default=str, sort_keys=True))
+    return 0 if preflight["valid"] else 2
 
 
 def _check_manifest(args: argparse.Namespace) -> int:

@@ -38,11 +38,16 @@ workflow. It is not a production pipeline stage.
 MONAN-JEDI is the single producer of the MPAS/JEDI runtime used by both
 `mpaswf` and `MPAS-BMatrix`.
 
-For JACI, configure one public installation root:
+For JACI, configure the two public ecosystem anchors:
 
 ```bash
 export MONAN_JEDI_INSTALL_ROOT=/p/projetos/monan_das/$USER/build/monan-jedi
+export STACK_ROOT=/path/to/validated/spack-stack
 ```
+
+The first selects installed MONAN/MPAS/JEDI runtime products. The second selects
+the external compiler/MPI/dependency environment reproduced by generated PBS
+jobs. Neither variable denotes the MPAS-BMatrix repository or work directory.
 
 MPAS-BMatrix derives runtime files from it, including:
 
@@ -62,7 +67,7 @@ validated.
 
 For compatibility, the configuration loader still accepts the historical
 `MONAN_JEDI_INSTALL` environment variable when `MONAN_JEDI_INSTALL_ROOT` is not
-set.
+set, but emits a deprecation warning.
 
 ## Quick start
 
@@ -80,7 +85,12 @@ The supported public commands are:
 ```bash
 mpaswf --help
 mpas-bmatrix --help
+mpas-bmatrix check-config --config configs/jaci-x1.10242.yaml
 ```
+
+`check-config` performs a side-effect-free filesystem/runtime preflight and
+returns non-zero when mandatory install, stack, mesh or static resources are
+missing.
 
 Normal execution uses the installed `mpas-bmatrix` command and does not
 require setting `PYTHONPATH` or invoking `python -m bmatrix`.
@@ -127,3 +137,9 @@ python -m pytest -p no:cacheprovider -q
 python -m ruff check src/bmatrix tests
 git diff --check
 ```
+
+
+The `check-config` preflight mirrors the real runtime consumers: partition lookup
+uses the configured graph basename, mandatory static/mesh resources cannot be
+silently omitted, and `STACK_ROOT` may name either the checkout or its immediate
+parent containing `spack-stack/`.

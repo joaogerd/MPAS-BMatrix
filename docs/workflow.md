@@ -7,17 +7,17 @@ This document describes the production flow represented by this branch.
 Use generic roots and adapt only these exports to the local system:
 
 ```bash
-export PROJECT_ROOT=/path/to/projects
+export REPOS_ROOT=/path/to/projects
 export WORK_ROOT=/path/to/work/MPAS-BMatrix
 
-mkdir -p "$PROJECT_ROOT" "$WORK_ROOT"
-cd "$PROJECT_ROOT"
+mkdir -p "$REPOS_ROOT" "$WORK_ROOT"
+cd "$REPOS_ROOT"
 
 git clone https://github.com/joaogerd/MPAS-BMatrix.git
 git clone https://github.com/joaogerd/mpaswf.git
 
-export BMATRIX_ROOT="$PROJECT_ROOT/MPAS-BMatrix"
-export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
+export BMATRIX_ROOT="$REPOS_ROOT/MPAS-BMatrix"
+export MPASWF_ROOT="$REPOS_ROOT/mpaswf"
 ```
 
 Install the repositories in the active Python environment:

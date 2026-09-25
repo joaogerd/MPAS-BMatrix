@@ -7,10 +7,11 @@
 
 set -euo pipefail
 
-PROJECT_ROOT=/p/projetos/monan_das/joao.gerd/projects/mpas-bmatrix-global
-RUN_DIR=/p/projetos/monan_das/joao.gerd/work/mpas-bmatrix-global/runs/smoke_x1.10242_2018041421_6h_np64
+# LEGACY diagnostic template. Production GFS/WPS/MPAS forecast generation is owned by mpaswf.
+: "${BMATRIX_ROOT:?Set BMATRIX_ROOT to the MPAS-BMatrix repository checkout}"
+: "${RUN_DIR:?Set RUN_DIR to the prepared legacy diagnostic runtime}"
 
-source "${PROJECT_ROOT}/scripts/load_jaci_env.sh"
+source "${BMATRIX_ROOT}/scripts/load_jaci_env.sh"
 
 cd "${RUN_DIR}"
 

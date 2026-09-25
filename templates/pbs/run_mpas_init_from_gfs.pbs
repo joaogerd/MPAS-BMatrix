@@ -7,11 +7,12 @@
 
 set -euo pipefail
 
-PROJECT_ROOT=${PROJECT_ROOT:-/p/projetos/monan_das/joao.gerd/projects/mpas-bmatrix-global}
-RUN_DIR=${RUN_DIR:-/p/projetos/monan_das/joao.gerd/work/mpas-bmatrix-global/mpas_init/x1.10242/2026-06-11_00:00:00_np64}
+# LEGACY diagnostic template. Production GFS/WPS/MPAS forecast generation is owned by mpaswf.
+: "${BMATRIX_ROOT:?Set BMATRIX_ROOT to the MPAS-BMatrix repository checkout}"
+: "${RUN_DIR:?Set RUN_DIR to the prepared legacy diagnostic runtime}"
 NPROC=${NPROC:-64}
 
-source "${PROJECT_ROOT}/scripts/load_jaci_env.sh"
+source "${BMATRIX_ROOT}/scripts/load_jaci_env.sh"
 
 cd "${RUN_DIR}"
 
@@ -22,7 +23,7 @@ ulimit -s unlimited || true
 echo "Job started at $(date -Is)"
 echo "Host: $(hostname)"
 echo "PBS_JOBID=${PBS_JOBID:-unknown}"
-echo "PROJECT_ROOT=${PROJECT_ROOT}"
+echo "BMATRIX_ROOT=${BMATRIX_ROOT}"
 echo "RUN_DIR=${RUN_DIR}"
 echo "NPROC=${NPROC}"
 echo

@@ -137,7 +137,8 @@ def test_load_config_rejects_unresolved_environment_variables(tmp_path: Path) ->
 def test_legacy_install_variable_alias(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MONAN_JEDI_INSTALL_ROOT", raising=False)
     monkeypatch.setenv("MONAN_JEDI_INSTALL", "/legacy/install")
-    assert expand_env("${MONAN_JEDI_INSTALL_ROOT}/bin/tool.x") == "/legacy/install/bin/tool.x"
+    with pytest.warns(DeprecationWarning, match="MONAN_JEDI_INSTALL"):
+        assert expand_env("${MONAN_JEDI_INSTALL_ROOT}/bin/tool.x") == "/legacy/install/bin/tool.x"
 
 
 def test_repository_default_config_composes_all_scientific_stages(
@@ -146,7 +147,9 @@ def test_repository_default_config_composes_all_scientific_stages(
     root = Path(__file__).resolve().parents[1]
     monkeypatch.setenv("USER", "runtime-user")
     monan_jedi_root = str(tmp_path / "install")
+    stack_root = str(tmp_path / "spack-stack")
     monkeypatch.setenv("MONAN_JEDI_INSTALL_ROOT", monan_jedi_root)
+    monkeypatch.setenv("STACK_ROOT", stack_root)
 
     config = load_config(root / "configs" / "jaci-x1.10242.yaml")
 
@@ -181,10 +184,7 @@ def test_repository_default_config_composes_all_scientific_stages(
         Path(monan_jedi_root)
         / "share/monan-jedi/mpas-jedi/namelists/keptvars.yaml"
     )
-    assert config["environment"]["variables"]["STACK_ROOT"] == (
-        "/p/projetos/monan_das/runtime-user/work/"
-        "spack-stack-inpe-overlay-20260515T181917Z/spack-stack"
-    )
+    assert config["environment"]["variables"]["STACK_ROOT"] == stack_root
 
 
 def test_plan_from_manifest_is_side_effect_free(tmp_path: Path) -> None:

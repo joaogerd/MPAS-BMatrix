@@ -108,19 +108,50 @@ __jaci_verify_python_environment() {
   esac
 }
 
+__jaci_normalize_path() {
+  local path="$1"
+  local resolved=""
+  resolved="$(readlink -f "${path}" 2>/dev/null || true)"
+  if [[ -n "${resolved}" ]]; then
+    printf '%s\n' "${resolved}"
+  else
+    printf '%s\n' "${path%/}"
+  fi
+}
+
+__jaci_stack_identity_matches() {
+  local expected_root
+  local expected_module_root
+  expected_root="$(__jaci_normalize_path "${STACK_ROOT}")"
+  expected_module_root="$(__jaci_normalize_path "${STACK_MODULE_ROOT}")"
+
+  [[ -n "${MONAN_JEDI_ACTIVE_STACK_ROOT:-}" ]] || return 1
+  [[ -n "${MONAN_JEDI_ACTIVE_STACK_MODULE_ROOT:-}" ]] || return 1
+  [[ -n "${MONAN_JEDI_ACTIVE_STACK_ENV_MODULE:-}" ]] || return 1
+  [[ "${MONAN_JEDI_ACTIVE_STACK_ROOT}" == "${expected_root}" ]] || return 1
+  [[ "${MONAN_JEDI_ACTIVE_STACK_MODULE_ROOT}" == "${expected_module_root}" ]] || return 1
+  [[ "${MONAN_JEDI_ACTIVE_STACK_ENV_MODULE}" == "${STACK_ENV_MODULE}" ]] || return 1
+}
+
+__jaci_mark_active_stack() {
+  export MONAN_JEDI_ACTIVE_STACK_ROOT="$(__jaci_normalize_path "${STACK_ROOT}")"
+  export MONAN_JEDI_ACTIVE_STACK_MODULE_ROOT="$(__jaci_normalize_path "${STACK_MODULE_ROOT}")"
+  export MONAN_JEDI_ACTIVE_STACK_ENV_MODULE="${STACK_ENV_MODULE}"
+}
+
 if [[ -z "${STACK_ROOT:-}" ]]; then
   echo "ERRO: STACK_ROOT is not set."
   echo "Set it to the root of the spack-stack checkout/environment, for example:"
   echo "  export STACK_ROOT=/path/to/validated/spack-stack"
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
 
 if [[ ! -d "${STACK_ROOT}" ]]; then
   echo "ERRO: STACK_ROOT does not exist or is not a directory: ${STACK_ROOT}"
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
 
@@ -141,45 +172,63 @@ else
   echo "Set STACK_ROOT to a validated spack-stack checkout, for example:"
   echo "  export STACK_ROOT=/path/to/validated/spack-stack"
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
 
 export STACK_ROOT
+
+# STACK_MODULE_ROOT may have been exported by a previously selected stack. When
+# its value is exactly the recorded old active module tree and STACK_ROOT has
+# changed, treat it as stale state rather than as an intentional user override.
+if [[ -n "${STACK_MODULE_ROOT:-}" && -n "${MONAN_JEDI_ACTIVE_STACK_ROOT:-}" && -n "${MONAN_JEDI_ACTIVE_STACK_MODULE_ROOT:-}" ]]; then
+  if [[ "$(__jaci_normalize_path "${STACK_MODULE_ROOT}")" == "${MONAN_JEDI_ACTIVE_STACK_MODULE_ROOT}" ]] && \
+     [[ "$(__jaci_normalize_path "${STACK_ROOT}")" != "${MONAN_JEDI_ACTIVE_STACK_ROOT}" ]]; then
+    unset STACK_MODULE_ROOT
+  fi
+fi
+
 if [[ -z "${STACK_MODULE_ROOT:-}" || ! -d "${STACK_MODULE_ROOT}" ]]; then
   export STACK_MODULE_ROOT="${STACK_ROOT}/envs/${STACK_ENV_NAME}/modules"
 fi
 
-# If already loaded, do not reload. Reloading the full stack on top of itself can
-# trigger module conflicts such as gcc-native/12.3 versus Spack gcc/12.3.0/*
-# package modules and can leave cc/ftn with broken MPI pkg-config metadata.
+# Reuse is safe only when both the module name and the recorded stack identity
+# match the selected root/module tree. Two spack-stack installations may publish
+# the same module name, so an unverified or stale identity forces a clean reload.
 case ":${LOADEDMODULES:-}:" in
   *":${STACK_ENV_MODULE}:"*)
-    if [[ "${__JACI_ENV_FORCE}" != "true" ]]; then
+    if [[ "${__JACI_ENV_FORCE}" != "true" ]] && __jaci_stack_identity_matches; then
       __jaci_sanitize_python_environment
       if ! __jaci_verify_python_environment; then
         unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-        unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+        unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
         return 1 2>/dev/null || exit 1
       fi
-      echo "JACI MPAS-JEDI environment already loaded; not reloading."
+      echo "JACI MPAS-JEDI environment already loaded from selected stack; not reloading."
+      echo "STACK_ROOT=${STACK_ROOT}"
       echo "STACK_ENV_MODULE=${STACK_ENV_MODULE}"
       echo "Python command=$(command -v python 2>/dev/null || true)"
       echo "PWD=$(pwd)"
       unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-      unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+      unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
       return 0 2>/dev/null || exit 0
     fi
+    echo "WARNING: matching module name is loaded but stack identity is stale or unverified; reloading selected STACK_ROOT."
     ;;
 esac
 
-# Clean environment. Use plain module purge rather than module --force purge,
-# because the latter is not portable across all module implementations.
+# Clean environment. A matching module name alone does not prove stack identity.
+unset MONAN_JEDI_ACTIVE_STACK_ROOT
+unset MONAN_JEDI_ACTIVE_STACK_MODULE_ROOT
+unset MONAN_JEDI_ACTIVE_STACK_ENV_MODULE
+
+# Use plain module purge rather than module --force purge because the latter is
+# not portable across all module implementations.
 if ! module purge; then
   echo "ERRO: module purge failed. Start a fresh shell and try again."
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
 
@@ -187,7 +236,7 @@ if ! cd "${STACK_ROOT}"; then
   echo "ERRO: cannot cd to STACK_ROOT=${STACK_ROOT}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
 
@@ -195,7 +244,7 @@ if ! source "${STACK_SITE_SETUP}"; then
   echo "ERRO: failed to source ${STACK_SITE_SETUP}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
 
@@ -203,7 +252,7 @@ if ! module use "${STACK_MODULE_ROOT}"; then
   echo "ERRO: failed to add module path ${STACK_MODULE_ROOT}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
 
@@ -212,9 +261,11 @@ if ! module load "${STACK_ENV_MODULE}"; then
   echo "The current module state may be inconsistent. Start a fresh shell before retrying."
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
+
+__jaci_mark_active_stack
 
 # Always remove Python search paths injected by spack-stack. If Conda was
 # active before loading the scientific runtime, also restore its Python command.
@@ -229,7 +280,7 @@ __jaci_sanitize_python_environment
 if ! __jaci_verify_python_environment; then
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
 
@@ -253,13 +304,13 @@ export GNU_VERSION="${GNU_VERSION:-12.3}"
 cd "${__JACI_ENV_OLDPWD}" || {
   echo "ERRO: could not return to ${__JACI_ENV_OLDPWD}"
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
-  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 }
 
 unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
 
-unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment
+unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
 
 echo "Loaded JACI MPAS-JEDI environment"
 echo "STACK_ROOT=${STACK_ROOT}"

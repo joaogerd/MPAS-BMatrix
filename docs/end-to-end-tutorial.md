@@ -108,12 +108,12 @@ Expected: Python 3.11 and NumPy from the same
 The following layout is the maintained JACI example:
 
 ```bash
-export PROJECT_ROOT="/p/projetos/monan_das/$USER/projects"
+export REPOS_ROOT="/p/projetos/monan_das/$USER/projects"
 export WORK_ROOT="/p/projetos/monan_das/$USER/work/MPAS-BMatrix"
 export MPASWF_WORK="/p/projetos/monan_das/$USER/work/mpaswf"
 
-export BMATRIX_ROOT="$PROJECT_ROOT/MPAS-BMatrix"
-export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
+export BMATRIX_ROOT="$REPOS_ROOT/MPAS-BMatrix"
+export MPASWF_ROOT="$REPOS_ROOT/mpaswf"
 
 export MONAN_JEDI_INSTALL_ROOT="/p/projetos/monan_das/$USER/build/monan-jedi"
 
@@ -132,10 +132,10 @@ export STACK_ROOT="/p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay
 #
 # export STACK_ROOT="/path/to/validated/spack-stack"
 
-mkdir -p "$PROJECT_ROOT" "$WORK_ROOT"
+mkdir -p "$REPOS_ROOT" "$WORK_ROOT"
 ```
 
-`PROJECT_ROOT` stores source checkouts. `WORK_ROOT` is the MPAS-BMatrix
+`REPOS_ROOT` is only a tutorial-local parent for source checkouts. `WORK_ROOT` is the MPAS-BMatrix
 calibration/work root. `MPASWF_WORK` is the upstream forecast-work root.
 `MONAN_JEDI_INSTALL_ROOT` is the installed runtime prefix, not a source
 checkout. `STACK_ROOT` selects the dependency/MPI environment used both
@@ -264,7 +264,7 @@ name into the YAML.
 Inspect the fields that are most likely to vary:
 
 ```bash
-grep -nE 'monan_jedi_root:|work_dir:|gfs_dir:|source:|bootstrap:|STACK_ROOT' \
+grep -nE 'monan_jedi_install_root:|work_dir:|gfs_dir:|source:|bootstrap:|STACK_ROOT' \
   "$MPASWF_CONFIG"
 ```
 
@@ -745,7 +745,7 @@ scientific settings are intentionally versioned defaults.
 | --- | --- | --- |
 | `MONAN_JEDI_INSTALL_ROOT` | yes, if your install prefix differs | Public MONAN-JEDI runtime root |
 | `STACK_ROOT` | yes, select a validated checkout | spack-stack/JEDI dependency environment for login and PBS |
-| `PROJECT_ROOT`, `WORK_ROOT` | only if using another storage layout | Source and MPAS-BMatrix work roots |
+| `REPOS_ROOT`, `WORK_ROOT` | only if using another storage layout | Source and MPAS-BMatrix work roots |
 | MPASWF `paths.*` | only if the shipped JACI layout is not valid | Forecast/GFS/template work areas |
 | MPASWF campaign dates | only for another experiment | Valid-time range and NMC pair production |
 | x1.10242 mesh/static paths | only if data live elsewhere | Mesh, partition and validated runtime inputs |
@@ -768,11 +768,11 @@ module load anaconda
 start_conda
 conda activate monan-jedi-bmatrix
 
-export PROJECT_ROOT="/p/projetos/monan_das/$USER/projects"
+export REPOS_ROOT="/p/projetos/monan_das/$USER/projects"
 export WORK_ROOT="/p/projetos/monan_das/$USER/work/MPAS-BMatrix"
 export MPASWF_WORK="/p/projetos/monan_das/$USER/work/mpaswf"
-export BMATRIX_ROOT="$PROJECT_ROOT/MPAS-BMatrix"
-export MPASWF_ROOT="$PROJECT_ROOT/mpaswf"
+export BMATRIX_ROOT="$REPOS_ROOT/MPAS-BMatrix"
+export MPASWF_ROOT="$REPOS_ROOT/mpaswf"
 export MONAN_JEDI_INSTALL_ROOT="/p/projetos/monan_das/$USER/build/monan-jedi"
 export STACK_ROOT="/path/to/validated/spack-stack"
 
