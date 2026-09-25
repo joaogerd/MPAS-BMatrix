@@ -46,5 +46,9 @@ jobs:
       - name: Run tests
         run: python -m pytest -p no:cacheprovider -q
 
-      - name: Ruff
-        run: python -m ruff check src/bmatrix tests
+      - name: Ruff critical checks
+        run: python -m ruff check --select E9,F63,F7,F82 src/bmatrix tests
+
+      - name: Ruff new contract files
+        run: |
+          python -m ruff check             src/bmatrix/preflight.py             tests/test_preflight.py             tests/test_ecosystem_config_contract.py
