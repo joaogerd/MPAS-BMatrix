@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from bmatrix.ab_compare_pbs import _comparison_shell, prepare_compare_job
@@ -14,13 +15,35 @@ def _config(tmp_path: Path) -> tuple[dict[str, object], Path, Path]:
     config_path = project_root / "configs" / "case.yaml"
     config_path.parent.mkdir()
     config_path.write_text("schema_version: 2\n")
+    install = tmp_path / "install"
+    manifest = install / "share" / "monan-jedi" / "install-manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        json.dumps(
+            {
+                "ecosystem_contract_version": 2,
+                "contract": "monan-jedi-runtime-v2",
+                "public_anchors": ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"],
+                "stack": {
+                    "env_name": "jaci-test",
+                    "env_module": "test/jedi-mpas-env/2.0.0",
+                    "site_setup": "configs/sites/test/setup.sh",
+                    "module_root_template": "envs/{env_name}/modules",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     config: dict[str, object] = {
         "project": {
             "project_root": str(project_root),
             "work_root": str(tmp_path / "work"),
         },
-        "environment": {"loader": "scripts/load_jaci_env.sh", "variables": {}},
-        "install": {"root": str(tmp_path / "install")},
+        "environment": {
+            "loader": "scripts/load_jaci_env.sh",
+            "variables": {"STACK_ROOT": "/runtime/spack-stack"},
+        },
+        "install": {"root": str(install)},
         "mesh": {"nproc": 128},
         "pbs": {
             "queues": {"bmatrix": "pesqmidi"},
