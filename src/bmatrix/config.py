@@ -258,7 +258,24 @@ def runtime_contract(config: Mapping[str, Any]) -> dict[str, Any]:
     root = Path(str(install["root"])).expanduser()
     manifest = root / "share" / "monan-jedi" / "install-manifest.json"
     if not manifest.is_file():
-        raise ConfigurationError(f"Contrato MONAN-JEDI não encontrado: {manifest}")
+        warnings.warn(
+            "A instalação MONAN-JEDI não possui ecosystem contract v2; "
+            "usando defaults JACI legados apenas para compatibilidade. "
+            "O fluxo mantido deve passar por mpas-bmatrix check-config.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return {
+            "ecosystem_contract_version": 2,
+            "contract": "monan-jedi-runtime-v2",
+            "public_anchors": ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"],
+            "stack": {
+                "env_name": "jaci-mpas-jedi-gcc12-craympich",
+                "env_module": "cray-mpich/8.1.31/none/none/jedi-mpas-env/1.0.0",
+                "site_setup": "configs/sites/tier2/jaci/setup.sh",
+                "module_root_template": "envs/{env_name}/modules",
+            },
+        }
 
     try:
         payload = json.loads(manifest.read_text(encoding="utf-8"))
