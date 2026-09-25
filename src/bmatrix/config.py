@@ -18,6 +18,7 @@ from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+import json
 import os
 import re
 import warnings
@@ -241,6 +242,46 @@ def validate_config_shape(config: Mapping[str, Any]) -> None:
     for key in ("nmc", "products", "regridding", "wind_transform"):
         if not isinstance(bflow.get(key), Mapping):
             raise ConfigurationError(f"bflow.{key} deve ser um bloco YAML.")
+
+
+def runtime_contract(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Load the MONAN-JEDI ecosystem contract v2 from install.root.
+
+    The install prefix is the only software root owned by MPAS-BMatrix. Stack
+    identity is read from the producer manifest instead of being duplicated in
+    this repository.
+    """
+    install = config.get("install")
+    if not isinstance(install, Mapping) or not install.get("root"):
+        raise ConfigurationError("install.root é obrigatório para o contrato MONAN-JEDI.")
+
+    root = Path(str(install["root"])).expanduser()
+    manifest = root / "share" / "monan-jedi" / "install-manifest.json"
+    if not manifest.is_file():
+        raise ConfigurationError(f"Contrato MONAN-JEDI não encontrado: {manifest}")
+
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ConfigurationError(f"Contrato MONAN-JEDI inválido: {manifest}: {exc}") from exc
+
+    if not isinstance(payload, Mapping):
+        raise ConfigurationError("A raiz do contrato MONAN-JEDI deve ser um objeto JSON.")
+    if payload.get("ecosystem_contract_version") != 2:
+        raise ConfigurationError(
+            "A instalação MONAN-JEDI não publica ecosystem_contract_version=2."
+        )
+    if payload.get("contract") != "monan-jedi-runtime-v2":
+        raise ConfigurationError("Identificador de contrato MONAN-JEDI não suportado.")
+
+    stack = payload.get("stack")
+    if not isinstance(stack, Mapping):
+        raise ConfigurationError("O contrato MONAN-JEDI não possui bloco stack.")
+    for key in ("env_name", "env_module", "site_setup", "module_root_template"):
+        if not isinstance(stack.get(key), str) or not stack[key]:
+            raise ConfigurationError(f"stack.{key} inválido no contrato MONAN-JEDI.")
+
+    return dict(payload)
 
 
 def safe_time(init_time: str) -> str:
