@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -37,6 +38,26 @@ def _run_loader(
         / "modules"
     )
     loaded = DEFAULT_STACK_ENV_MODULE if already_loaded else ""
+
+    install = tmp_path / "install"
+    manifest = install / "share" / "monan-jedi" / "install-manifest.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        json.dumps(
+            {
+                "ecosystem_contract_version": 2,
+                "contract": "monan-jedi-runtime-v2",
+                "public_anchors": ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"],
+                "stack": {
+                    "env_name": "jaci-mpas-jedi-gcc12-craympich",
+                    "env_module": DEFAULT_STACK_ENV_MODULE,
+                    "site_setup": "configs/sites/tier2/jaci/setup.sh",
+                    "module_root_template": "envs/{env_name}/modules",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
     if identity == "match":
         active_root = str(stack_root.resolve())
@@ -80,6 +101,7 @@ module() {{
 }}
 
 export STACK_ROOT={stack_root!s}
+export MONAN_JEDI_INSTALL_ROOT={install!s}
 unset STACK_MODULE_ROOT STACK_ENV_NAME STACK_SITE_SETUP STACK_ENV_MODULE JACI_FORCE_RELOAD
 export LOADEDMODULES={loaded!r}
 export MONAN_JEDI_ACTIVE_STACK_ROOT={active_root!r}
