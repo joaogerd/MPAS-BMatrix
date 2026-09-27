@@ -20,12 +20,9 @@
 #
 #   export STACK_ROOT=/path/to/validated/spack-stack
 #
-# Optional overrides:
-#
-#   export STACK_ENV_NAME=jaci-mpas-jedi-gcc12-craympich
-#   export STACK_SITE_SETUP=configs/sites/tier2/jaci/setup.sh
-#   export STACK_ENV_MODULE=cray-mpich/8.1.31/none/none/jedi-mpas-env/1.0.0
-#   export STACK_MODULE_ROOT=${STACK_ROOT}/envs/${STACK_ENV_NAME}/modules
+# Advanced compatibility overrides exist for legacy installations, but
+# maintained runs should obtain stack identity from the MONAN-JEDI runtime
+# contract v2 rather than setting STACK_ENV_NAME/STACK_ENV_MODULE manually.
 #
 # Idempotency:
 #   If the target jedi-mpas-env module is already loaded, this script returns
