@@ -293,13 +293,30 @@ if ! cd "${STACK_ROOT}"; then
   return 1 2>/dev/null || exit 1
 fi
 
-if ! source "${STACK_SITE_SETUP}"; then
+__JACI_HAD_NOUNSET=0
+case "$-" in
+  *u*) __JACI_HAD_NOUNSET=1 ;;
+esac
+set +u
+if source "${STACK_SITE_SETUP}"; then
+  __JACI_SETUP_STATUS=0
+else
+  __JACI_SETUP_STATUS=$?
+fi
+if [[ "${__JACI_HAD_NOUNSET}" -eq 1 ]]; then
+  set -u
+else
+  set +u
+fi
+if [[ "${__JACI_SETUP_STATUS}" -ne 0 ]]; then
   echo "ERRO: failed to source ${STACK_SITE_SETUP}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
+  unset __JACI_HAD_NOUNSET __JACI_SETUP_STATUS
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
   unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
+unset __JACI_HAD_NOUNSET __JACI_SETUP_STATUS
 
 if ! module use "${STACK_MODULE_ROOT}"; then
   echo "ERRO: failed to add module path ${STACK_MODULE_ROOT}"
