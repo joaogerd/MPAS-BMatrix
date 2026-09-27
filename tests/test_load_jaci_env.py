@@ -102,7 +102,11 @@ module() {{
 
 export STACK_ROOT={stack_root!s}
 export MONAN_JEDI_INSTALL_ROOT={install!s}
-unset STACK_MODULE_ROOT STACK_ENV_NAME STACK_SITE_SETUP STACK_ENV_MODULE JACI_FORCE_RELOAD
+export STACK_MODULE_ROOT={module_root!s}
+export STACK_ENV_NAME=jaci-mpas-jedi-gcc12-craympich
+export STACK_SITE_SETUP=configs/sites/tier2/jaci/setup.sh
+export STACK_ENV_MODULE={DEFAULT_STACK_ENV_MODULE!r}
+unset JACI_FORCE_RELOAD
 export LOADEDMODULES={loaded!r}
 export MONAN_JEDI_ACTIVE_STACK_ROOT={active_root!r}
 export MONAN_JEDI_ACTIVE_STACK_MODULE_ROOT={active_module_root!r}
