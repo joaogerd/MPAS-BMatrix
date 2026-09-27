@@ -33,6 +33,13 @@ environment:
     # jobs use the same stack chosen for the login-shell validation.
     STACK_ROOT: ${STACK_ROOT}
 
+    # Job-local JACI runtime policy. These values are exported only after the
+    # selected stack has been reconstructed on the compute node. They are site
+    # configuration, not ecosystem-wide anchors.
+    OMP_NUM_THREADS: "1"
+    GFORTRAN_CONVERT_UNIT: "big_endian:101-200"
+    FI_CXI_RX_MATCH_MODE: "hybrid"
+
 install:
   # Canonical MONAN-JEDI public runtime prefix.
   root: ${MONAN_JEDI_INSTALL_ROOT}
@@ -47,6 +54,10 @@ install:
   #   mpasjedi_unbalance_ensemble.x
 
 pbs:
+  # MPI launcher policy belongs to the site scheduler layer. Stage modules
+  # provide only the scientific executable and its arguments.
+  launcher: ["mpiexec", "-n", "{mpi_ranks}"]
+
   queues:
     bmatrix: pesqmidi
 
