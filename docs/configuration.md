@@ -46,6 +46,17 @@ The current shipped case also does not consume `MPAS_MESH_ROOT` or
 `MPAS_JEDI_STATIC_ROOT`; mesh/static paths are explicit in
 `configs/jaci-x1.10242.yaml`.
 
+The installed MONAN-JEDI manifest is the single source of truth for the
+compatible stack identity:
+
+```text
+${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/install-manifest.json
+```
+
+The maintained workflow requires `ecosystem_contract_version: 2`.
+`STACK_ROOT` selects the checkout; `env_name`, `env_module`,
+`site_setup` and the module-tree template come from that manifest.
+
 The normal production configuration does not need:
 
 ```text
@@ -83,17 +94,23 @@ work/build trees.
 
 ## Case/static inputs
 
-`MPAS_JEDI_STATIC_ROOT` describes the validated scientific case and should
-contain the required invariant and reference atmosphere files. Mesh and
-partition files are declared through `MPAS_MESH_ROOT`.
+Case-specific invariant, mesh, graph, partition and reference-atmosphere paths
+belong to the case YAML, currently `configs/jaci-x1.10242.yaml`. The maintained
+configuration does not read `MPAS_JEDI_STATIC_ROOT` or `MPAS_MESH_ROOT`.
+Those historical shell names may still appear in old notes, but they are not
+part of the current configuration API.
 
 ## PBS environment
 
-Variables needed before `scripts/load_jaci_env.sh` runs inside a PBS job belong
-under `environment.variables`; generated scripts must not depend on arbitrary
-login-shell inheritance. The maintained JACI base maps
-`environment.variables.STACK_ROOT` to `${STACK_ROOT}`, making the selected
-stack an explicit run-time input instead of a personal hardcoded path.
+Variables needed by a PBS job belong under `environment.variables`; generated
+scripts must not depend on arbitrary login-shell inheritance. The maintained
+JACI base maps `STACK_ROOT` from the public anchor and declares the job-local
+OpenMP, Fortran-endianness and libfabric settings there. The scheduler augments
+that mapping with stack identity read from the installed runtime contract before
+sourceing `scripts/load_jaci_env.sh`.
+
+MPI launcher policy is declared once as `pbs.launcher`; individual scientific
+stages do not hard-code `mpiexec` paths or task flags.
 
 ## Include semantics
 
