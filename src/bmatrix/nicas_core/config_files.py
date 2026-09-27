@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, render_pbs
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
 from ..scientific_config import control_file_names, normalize_control, section
 from ..shell import write_text
 from ..vbal_core.model import toolbox_exe
@@ -89,7 +89,7 @@ def write_nicas_pbs(config: Mapping[str, Any], run_dir: str | Path, variable: st
         config,
         name=f"NICAS_{variable}",
         run_dir=directory,
-        command=("mpiexec", "-n", str(ranks), str(toolbox_exe(config)), "./run_nicas.yaml", "./run_nicas.runlog"),
+        command=mpi_command(config, ranks, str(toolbox_exe(config)), "./run_nicas.yaml", "./run_nicas.runlog"),
     )
     write_text(directory / "qsub_nicas.bash", render_pbs(spec))
 

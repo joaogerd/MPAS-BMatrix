@@ -6,6 +6,8 @@ from pathlib import Path
 import shlex
 from typing import Mapping, Sequence
 
+from .config import runtime_contract
+
 
 @dataclass(frozen=True, slots=True)
 class ResourceRequest:
@@ -68,6 +70,32 @@ def _configured_runtime_environment(environment: Mapping[str, object]) -> dict[s
     return result
 
 
+def mpi_command(
+    config: Mapping[str, object],
+    mpi_ranks: int,
+    *arguments: object,
+) -> tuple[str, ...]:
+    """Build one MPI argv from the site scheduler configuration.
+
+    pbs.launcher is an optional list of argv tokens and may use the
+    {mpi_ranks} placeholder. The portable default is mpiexec -n {mpi_ranks}.
+    Scientific stages provide only their executable and arguments, so launcher
+    policy has one owner.
+    """
+    pbs = config.get("pbs", {})
+    if not isinstance(pbs, Mapping):
+        raise ValueError("pbs deve ser um bloco YAML.")
+    raw = pbs.get("launcher", ["mpiexec", "-n", "{mpi_ranks}"])
+    if not isinstance(raw, list) or not raw or not all(
+        isinstance(item, str) and item for item in raw
+    ):
+        raise ValueError("pbs.launcher deve ser uma lista não vazia de strings.")
+    launcher = tuple(
+        item.replace("{mpi_ranks}", str(mpi_ranks))
+        for item in raw
+    )
+    return (*launcher, *(str(item) for item in arguments))
+
 def bmatrix_job_spec(
     config: Mapping[str, object],
     *,
@@ -93,17 +121,37 @@ def bmatrix_job_spec(
     project_root = str(project["project_root"])
 
     runtime_environment = _configured_runtime_environment(environment)
+
+    # Stack identity is owned by the installed MONAN-JEDI runtime contract.
+    # Generated PBS jobs export it explicitly before sourcing the repository
+    # loader, so compute nodes cannot drift to the loader's legacy defaults.
+    contract = runtime_contract(config)
+    stack_contract = contract["stack"]
+    stack_root = runtime_environment.get("STACK_ROOT")
+    if not stack_root:
+        raise ValueError("environment.variables.STACK_ROOT é obrigatório.")
+    install = config.get("install", {})
+    if not isinstance(install, Mapping) or not install.get("root"):
+        raise ValueError("install.root é obrigatório.")
+    env_name = str(stack_contract["env_name"])
+    module_root = str(Path(stack_root) / str(stack_contract["module_root_template"]).format(env_name=env_name))
     runtime_environment.update(
         {
-            "OMP_NUM_THREADS": "1",
-            "GFORTRAN_CONVERT_UNIT": "big_endian:101-200",
-            "FI_CXI_RX_MATCH_MODE": "hybrid",
+            "MONAN_JEDI_INSTALL_ROOT": str(install["root"]),
+            "STACK_ENV_NAME": env_name,
+            "STACK_SITE_SETUP": str(stack_contract["site_setup"]),
+            "STACK_ENV_MODULE": str(stack_contract["env_module"]),
+            "STACK_MODULE_ROOT": module_root,
         }
     )
 
     bootstrap = tuple(
         [
-            *(f"export {name}={shlex.quote(value)}" for name, value in _configured_runtime_environment(environment).items()),
+            *(
+                f"export {name}={shlex.quote(value)}"
+                for name, value in runtime_environment.items()
+                if name.startswith("STACK_") or name == "MONAN_JEDI_INSTALL_ROOT"
+            ),
             f"source {shlex.quote(str(Path(project_root) / loader))}",
         ]
     )
@@ -115,9 +163,10 @@ def bmatrix_job_spec(
         resources=ResourceRequest(mpi_ranks=ranks, walltime=walltime, queue=queue),
         bootstrap=bootstrap,
         environment={
-            "OMP_NUM_THREADS": runtime_environment["OMP_NUM_THREADS"],
-            "GFORTRAN_CONVERT_UNIT": runtime_environment["GFORTRAN_CONVERT_UNIT"],
-            "FI_CXI_RX_MATCH_MODE": runtime_environment["FI_CXI_RX_MATCH_MODE"],
+            name: value
+            for name, value in runtime_environment.items()
+            if not name.startswith("STACK_")
+            and name != "MONAN_JEDI_INSTALL_ROOT"
         },
         stdout=stdout,
         stderr=stderr,

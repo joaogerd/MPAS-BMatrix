@@ -1,5 +1,6 @@
 # MPAS-BMatrix
 
+
 `MPAS-BMatrix` is the INPE/MONAN workflow for building, validating and
 diagnosing static MPAS-JEDI/SABER/BUMP background-error covariance products.
 
@@ -48,6 +49,18 @@ export STACK_ROOT=/path/to/validated/spack-stack
 The first selects installed MONAN/MPAS/JEDI runtime products. The second selects
 the external compiler/MPI/dependency environment reproduced by generated PBS
 jobs. Neither variable denotes the MPAS-BMatrix repository or work directory.
+
+The installed runtime is also the authority for stack identity. MPAS-BMatrix
+reads:
+
+```text
+$MONAN_JEDI_INSTALL_ROOT/share/monan-jedi/install-manifest.json
+```
+
+and requires `ecosystem_contract_version: 2` for the maintained path.
+`env_name`, `env_module`, `site_setup` and the stack module-tree layout are
+therefore produced once by MONAN-JEDI instead of copied into this repository.
+Only `STACK_ROOT` remains an operator choice.
 
 MPAS-BMatrix derives runtime files from it, including:
 

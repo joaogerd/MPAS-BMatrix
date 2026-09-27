@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, render_pbs
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
 from ..scientific_config import bflow_sample_stem, control_file_names, normalize_control, section
 from ..shell import write_text
 from ..vbal_core.config_files import render_vbal_relations
@@ -152,6 +152,6 @@ def write_hdiag_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
         config,
         name="mpasjediBTrainingHDIAG",
         run_dir=directory,
-        command=("mpiexec", "-n", str(ranks), str(toolbox_exe(config)), "./run_hdiag.yaml", "./run_hdiag.runlog"),
+        command=mpi_command(config, ranks, str(toolbox_exe(config)), "./run_hdiag.yaml", "./run_hdiag.runlog"),
     )
     write_text(directory / "qsub_hdiag.bash", render_pbs(spec))

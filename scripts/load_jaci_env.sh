@@ -20,12 +20,9 @@
 #
 #   export STACK_ROOT=/path/to/validated/spack-stack
 #
-# Optional overrides:
-#
-#   export STACK_ENV_NAME=jaci-mpas-jedi-gcc12-craympich
-#   export STACK_SITE_SETUP=configs/sites/tier2/jaci/setup.sh
-#   export STACK_ENV_MODULE=cray-mpich/8.1.31/none/none/jedi-mpas-env/1.0.0
-#   export STACK_MODULE_ROOT=${STACK_ROOT}/envs/${STACK_ENV_NAME}/modules
+# Advanced compatibility overrides exist for legacy installations, but
+# maintained runs should obtain stack identity from the MONAN-JEDI runtime
+# contract v2 rather than setting STACK_ENV_NAME/STACK_ENV_MODULE manually.
 #
 # Idempotency:
 #   If the target jedi-mpas-env module is already loaded, this script returns
@@ -143,21 +140,74 @@ if [[ -z "${STACK_ROOT:-}" ]]; then
   echo "ERRO: STACK_ROOT is not set."
   echo "Set it to the root of the spack-stack checkout/environment, for example:"
   echo "  export STACK_ROOT=/path/to/validated/spack-stack"
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
   unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
 
 if [[ ! -d "${STACK_ROOT}" ]]; then
   echo "ERRO: STACK_ROOT does not exist or is not a directory: ${STACK_ROOT}"
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
   unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
 
-export STACK_ENV_NAME="${STACK_ENV_NAME:-jaci-mpas-jedi-gcc12-craympich}"
-export STACK_SITE_SETUP="${STACK_SITE_SETUP:-configs/sites/tier2/jaci/setup.sh}"
-export STACK_ENV_MODULE="${STACK_ENV_MODULE:-cray-mpich/8.1.31/none/none/jedi-mpas-env/1.0.0}"
+# Prefer the stack identity published by the installed MONAN-JEDI runtime.
+# Legacy defaults remain only for older installations without contract v2.
+__JACI_CONTRACT_MANIFEST="${MONAN_JEDI_INSTALL_ROOT:-}/share/monan-jedi/install-manifest.json"
+if [[ -n "${MONAN_JEDI_INSTALL_ROOT:-}" && -f "${__JACI_CONTRACT_MANIFEST}" ]]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "ERRO: python3 is required to read the MONAN-JEDI runtime contract." >&2
+    return 1 2>/dev/null || exit 1
+  fi
+
+  __JACI_CONTRACT_OUTPUT="$(
+    python3 - "${__JACI_CONTRACT_MANIFEST}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if payload.get("ecosystem_contract_version") != 2:
+    raise SystemExit("ecosystem_contract_version must be 2")
+if payload.get("contract") != "monan-jedi-runtime-v2":
+    raise SystemExit("unsupported runtime contract identifier")
+stack = payload.get("stack")
+if not isinstance(stack, dict):
+    raise SystemExit("runtime contract stack block is missing")
+for key in ("env_name", "site_setup", "env_module", "module_root_template"):
+    if not isinstance(stack.get(key), str) or not stack[key]:
+        raise SystemExit(f"runtime contract stack.{key} is invalid")
+print(stack["env_name"])
+print(stack["site_setup"])
+print(stack["env_module"])
+print(stack["module_root_template"])
+PY
+  )" || {
+    echo "ERRO: invalid MONAN-JEDI runtime contract: ${__JACI_CONTRACT_MANIFEST}" >&2
+    unset __JACI_CONTRACT_OUTPUT
+    return 1 2>/dev/null || exit 1
+  }
+
+  mapfile -t __JACI_CONTRACT_VALUES <<< "${__JACI_CONTRACT_OUTPUT}"
+  unset __JACI_CONTRACT_OUTPUT
+  if [[ "${#__JACI_CONTRACT_VALUES[@]}" -ne 4 ]]; then
+    echo "ERRO: incomplete MONAN-JEDI runtime contract stack identity." >&2
+    return 1 2>/dev/null || exit 1
+  fi
+  export STACK_ENV_NAME="${STACK_ENV_NAME:-${__JACI_CONTRACT_VALUES[0]}}"
+  export STACK_SITE_SETUP="${STACK_SITE_SETUP:-${__JACI_CONTRACT_VALUES[1]}}"
+  export STACK_ENV_MODULE="${STACK_ENV_MODULE:-${__JACI_CONTRACT_VALUES[2]}}"
+  __JACI_CONTRACT_MODULE_TEMPLATE="${__JACI_CONTRACT_VALUES[3]}"
+fi
+
+if [[ -z "${STACK_ENV_NAME:-}" || -z "${STACK_SITE_SETUP:-}" || -z "${STACK_ENV_MODULE:-}" ]]; then
+  echo "WARNING: MONAN-JEDI runtime contract v2 is unavailable; using deprecated JACI stack defaults."
+  export STACK_ENV_NAME="${STACK_ENV_NAME:-jaci-mpas-jedi-gcc12-craympich}"
+  export STACK_SITE_SETUP="${STACK_SITE_SETUP:-configs/sites/tier2/jaci/setup.sh}"
+  export STACK_ENV_MODULE="${STACK_ENV_MODULE:-cray-mpich/8.1.31/none/none/jedi-mpas-env/1.0.0}"
+  __JACI_CONTRACT_MODULE_TEMPLATE="${__JACI_CONTRACT_MODULE_TEMPLATE:-envs/{env_name}/modules}"
+fi
 
 # Accept either the spack-stack checkout itself or its immediate parent. Resolve
 # the actual checkout before deriving the module directory.
@@ -171,7 +221,7 @@ else
   echo "Expected file: ${STACK_SITE_SETUP}"
   echo "Set STACK_ROOT to a validated spack-stack checkout, for example:"
   echo "  export STACK_ROOT=/path/to/validated/spack-stack"
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
   unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
@@ -189,7 +239,10 @@ if [[ -n "${STACK_MODULE_ROOT:-}" && -n "${MONAN_JEDI_ACTIVE_STACK_ROOT:-}" && -
 fi
 
 if [[ -z "${STACK_MODULE_ROOT:-}" || ! -d "${STACK_MODULE_ROOT}" ]]; then
-  export STACK_MODULE_ROOT="${STACK_ROOT}/envs/${STACK_ENV_NAME}/modules"
+  __jaci_module_relative="${__JACI_CONTRACT_MODULE_TEMPLATE:-envs/{env_name}/modules}"
+  __jaci_module_relative="${__jaci_module_relative//\{env_name\}/${STACK_ENV_NAME}}"
+  export STACK_MODULE_ROOT="${STACK_ROOT}/${__jaci_module_relative}"
+  unset __jaci_module_relative
 fi
 
 # Reuse is safe only when both the module name and the recorded stack identity
@@ -200,7 +253,7 @@ case ":${LOADEDMODULES:-}:" in
     if [[ "${__JACI_ENV_FORCE}" != "true" ]] && __jaci_stack_identity_matches; then
       __jaci_sanitize_python_environment
       if ! __jaci_verify_python_environment; then
-        unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+        unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
         unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
         return 1 2>/dev/null || exit 1
       fi
@@ -209,7 +262,7 @@ case ":${LOADEDMODULES:-}:" in
       echo "STACK_ENV_MODULE=${STACK_ENV_MODULE}"
       echo "Python command=$(command -v python 2>/dev/null || true)"
       echo "PWD=$(pwd)"
-      unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+      unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
       unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
       return 0 2>/dev/null || exit 0
     fi
@@ -227,7 +280,7 @@ unset MONAN_JEDI_ACTIVE_STACK_ENV_MODULE
 if ! module purge; then
   echo "ERRO: module purge failed. Start a fresh shell and try again."
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
   unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
@@ -235,23 +288,40 @@ fi
 if ! cd "${STACK_ROOT}"; then
   echo "ERRO: cannot cd to STACK_ROOT=${STACK_ROOT}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
   unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
 
-if ! source "${STACK_SITE_SETUP}"; then
+__JACI_HAD_NOUNSET=0
+case "$-" in
+  *u*) __JACI_HAD_NOUNSET=1 ;;
+esac
+set +u
+if source "${STACK_SITE_SETUP}"; then
+  __JACI_SETUP_STATUS=0
+else
+  __JACI_SETUP_STATUS=$?
+fi
+if [[ "${__JACI_HAD_NOUNSET}" -eq 1 ]]; then
+  set -u
+else
+  set +u
+fi
+if [[ "${__JACI_SETUP_STATUS}" -ne 0 ]]; then
   echo "ERRO: failed to source ${STACK_SITE_SETUP}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+  unset __JACI_HAD_NOUNSET __JACI_SETUP_STATUS
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
   unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
+unset __JACI_HAD_NOUNSET __JACI_SETUP_STATUS
 
 if ! module use "${STACK_MODULE_ROOT}"; then
   echo "ERRO: failed to add module path ${STACK_MODULE_ROOT}"
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
   unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
@@ -260,7 +330,7 @@ if ! module load "${STACK_ENV_MODULE}"; then
   echo "ERRO: failed to load ${STACK_ENV_MODULE}"
   echo "The current module state may be inconsistent. Start a fresh shell before retrying."
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
   unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
@@ -279,15 +349,15 @@ __jaci_mark_active_stack
 __jaci_sanitize_python_environment
 if ! __jaci_verify_python_environment; then
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
   unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 fi
 
 # Build/runtime compiler variables expected on JACI with CrayPE.
-export CC="${CC:-/opt/cray/pe/craype/2.7.33/bin/cc}"
-export CXX="${CXX:-/opt/cray/pe/craype/2.7.33/bin/CC}"
-export FC="${FC:-/opt/cray/pe/craype/2.7.33/bin/ftn}"
+export CC="${CC:-cc}"
+export CXX="${CXX:-CC}"
+export FC="${FC:-ftn}"
 export F77="${F77:-${FC}}"
 export F90="${F90:-${FC}}"
 
@@ -303,12 +373,12 @@ export GNU_VERSION="${GNU_VERSION:-12.3}"
 
 cd "${__JACI_ENV_OLDPWD}" || {
   echo "ERRO: could not return to ${__JACI_ENV_OLDPWD}"
-  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
   unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
   return 1 2>/dev/null || exit 1
 }
 
-unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT
+unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
 
 unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
 

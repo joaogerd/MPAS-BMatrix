@@ -87,12 +87,20 @@ The historical `unbalance_core` remains only for controlled A/B validation and
 may still use `mpasjedi_unbalance_ensemble.x`; it is not part of the production
 pipeline.
 
-For backward compatibility, `MONAN_JEDI_INSTALL` is still accepted when the
-canonical `MONAN_JEDI_INSTALL_ROOT` variable is not set.
+The installed file
+`${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/install-manifest.json` provides
+the compatible stack environment/module/site-setup identity. The user selects
+only `STACK_ROOT`; do not copy the JEDI module name into local scripts.
 
-`MPAS_JEDI_STATIC_ROOT` must contain the compatible x1.10242 invariant,
-namelist, streams and stream-list files. These files must match the installed
-MPAS Registry and physics tables.
+For backward compatibility, `MONAN_JEDI_INSTALL` is still accepted when the
+canonical `MONAN_JEDI_INSTALL_ROOT` variable is not set. A missing v2 manifest
+also has a temporary JACI fallback in the interactive loader, but maintained
+runs should pass `mpas-bmatrix check-config` with an installed
+`ecosystem_contract_version: 2` before submission.
+
+The compatible x1.10242 invariant, mesh, graph, partition and other scientific
+case inputs are declared directly in `configs/jaci-x1.10242.yaml`. The current
+configuration does not consume `MPAS_JEDI_STATIC_ROOT` or `MPAS_MESH_ROOT`.
 
 Load the runtime:
 

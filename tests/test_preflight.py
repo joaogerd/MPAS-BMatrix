@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from bmatrix.preflight import preflight_payload
@@ -30,6 +31,25 @@ def _config(tmp_path: Path) -> dict[str, object]:
     _executable(install / "bin/mpasjedi_error_covariance_toolbox.x")
     _executable(install / "bin/mpasjedi_variational.x")
     (install / "share/MPAS/core_atmosphere").mkdir(parents=True)
+    manifest = install / "share/monan-jedi/install-manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "ecosystem_contract_version": 2,
+                "contract": "monan-jedi-runtime-v2",
+                "public_anchors": ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"],
+                "stack": {
+                    "env_name": "jaci-mpas-jedi-gcc12-craympich",
+                    "env_module": "test/jedi-mpas-env/2.0.0",
+                    "site_setup": "configs/sites/tier2/jaci/setup.sh",
+                    "module_root_template": "envs/{env_name}/modules",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     namelists = install / "share/monan-jedi/mpas-jedi/namelists"
     namelists.mkdir(parents=True)
     (namelists / "geovars.yaml").write_text("geovars: []\n")
@@ -88,6 +108,7 @@ def test_preflight_accepts_complete_runtime_contract(tmp_path: Path) -> None:
     checks = {item["name"]: item for item in payload["checks"]}
     assert checks["project.work_root"]["status"] == "CREATABLE"
     assert checks["environment.variables.STACK_ROOT"]["status"] == "OK"
+    assert checks["install.runtime_contract_v2"]["status"] == "OK"
     assert checks["install.error_covariance_toolbox"]["status"] == "OK"
     assert checks["install.variational"]["status"] == "OK"
     assert checks["mesh.partition"]["status"] == "OK"

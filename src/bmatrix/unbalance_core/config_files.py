@@ -6,7 +6,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, render_pbs
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
 from ..scientific_config import bflow_sample_stem, ordered_control_file_names, section
 from ..shell import write_text
 from ..vbal_core.config_files import render_vbal_relations
@@ -93,10 +93,9 @@ def write_unbalance_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
         config,
         name="mpasjediUnbalanceEns",
         run_dir=directory,
-        command=(
-            "mpiexec",
-            "-n",
-            str(ranks),
+        command=mpi_command(
+            config,
+            ranks,
             str(exe),
             "./run_unbalance.yaml",
             "./run_unbalance.runlog",
