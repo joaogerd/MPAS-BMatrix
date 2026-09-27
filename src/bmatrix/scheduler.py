@@ -142,9 +142,6 @@ def bmatrix_job_spec(
             "STACK_SITE_SETUP": str(stack_contract["site_setup"]),
             "STACK_ENV_MODULE": str(stack_contract["env_module"]),
             "STACK_MODULE_ROOT": module_root,
-            "OMP_NUM_THREADS": "1",
-            "GFORTRAN_CONVERT_UNIT": "big_endian:101-200",
-            "FI_CXI_RX_MATCH_MODE": "hybrid",
         }
     )
 
@@ -166,9 +163,10 @@ def bmatrix_job_spec(
         resources=ResourceRequest(mpi_ranks=ranks, walltime=walltime, queue=queue),
         bootstrap=bootstrap,
         environment={
-            "OMP_NUM_THREADS": runtime_environment["OMP_NUM_THREADS"],
-            "GFORTRAN_CONVERT_UNIT": runtime_environment["GFORTRAN_CONVERT_UNIT"],
-            "FI_CXI_RX_MATCH_MODE": runtime_environment["FI_CXI_RX_MATCH_MODE"],
+            name: value
+            for name, value in runtime_environment.items()
+            if not name.startswith("STACK_")
+            and name != "MONAN_JEDI_INSTALL_ROOT"
         },
         stdout=stdout,
         stderr=stderr,
