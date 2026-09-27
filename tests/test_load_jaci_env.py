@@ -15,7 +15,10 @@ def _fake_stack(tmp_path: Path) -> Path:
     stack_root = tmp_path / "spack-stack"
     setup = stack_root / "configs" / "sites" / "tier2" / "jaci" / "setup.sh"
     setup.parent.mkdir(parents=True)
-    setup.write_text("# fake JACI setup for loader regression tests\n", encoding="utf-8")
+    setup.write_text(
+        '# fake JACI setup for loader regression tests\n: "${JACI_SETUP_OPTIONAL_UNSET}"\n',
+        encoding="utf-8",
+    )
 
     module_root = (
         stack_root
