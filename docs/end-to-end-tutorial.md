@@ -120,17 +120,13 @@ export MONAN_JEDI_INSTALL_ROOT="/p/projetos/monan_das/$USER/build/monan-jedi"
 # -----------------------------------------------------------------------------
 # spack-stack
 # -----------------------------------------------------------------------------
-# The validated spack-stack checkout currently used by the group on JACI is
-# shown below so the tutorial works out of the box for users with access to it.
-#
-# This installation is maintained outside MPAS-BMatrix and is therefore a
-# site/runtime dependency rather than part of this repository.
-export STACK_ROOT="/p/projetos/monan_das/joao.gerd/work/spack-stack-inpe-overlay-20260515T181917Z/spack-stack"
+# Select the validated spack-stack checkout available to your group/site.
+# The concrete shared path is site administration, not a repository default.
+export STACK_ROOT="/path/to/validated/spack-stack"
 
-# If this installation is not accessible from your account, or if another
-# validated checkout must be used, change only STACK_ROOT:
-#
-# export STACK_ROOT="/path/to/validated/spack-stack"
+# Do not copy another user's personal path into configuration. The installed
+# MONAN-JEDI runtime contract supplies env_name/env_module/site_setup; users
+# choose only the checkout root through STACK_ROOT.
 
 mkdir -p "$REPOS_ROOT" "$WORK_ROOT"
 ```
