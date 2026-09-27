@@ -690,9 +690,36 @@ def _dirac_prepare_config(tmp_path: Path) -> dict[str, object]:
     install = tmp_path / "install"
     (install / "bin").mkdir(parents=True)
     (install / "bin" / "mpasjedi_error_covariance_toolbox.x").write_text("toolbox")
+
+    stack = tmp_path / "spack-stack"
+    (stack / "configs" / "sites" / "tier2" / "jaci").mkdir(parents=True)
+    (stack / "configs" / "sites" / "tier2" / "jaci" / "setup.sh").write_text("# setup\n")
+    (stack / "envs" / "jaci-test" / "modules").mkdir(parents=True)
+
+    manifest = install / "share" / "monan-jedi" / "install-manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        json.dumps(
+            {
+                "ecosystem_contract_version": 2,
+                "contract": "monan-jedi-runtime-v2",
+                "public_anchors": ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"],
+                "stack": {
+                    "env_name": "jaci-test",
+                    "env_module": "test/jedi-mpas-env/2.0.0",
+                    "site_setup": "configs/sites/tier2/jaci/setup.sh",
+                    "module_root_template": "envs/{env_name}/modules",
+                },
+            }
+        )
+    )
+
     config["install"] = {"root": str(install)}
     config["project"] = {"work_root": str(tmp_path / "work"), "project_root": str(tmp_path / "project")}
-    config["environment"] = {"loader": "load-env.sh"}
+    config["environment"] = {
+        "loader": "load-env.sh",
+        "variables": {"STACK_ROOT": str(stack)},
+    }
     config["dirac"]["background_variables"] = [
         *ANALYSIS_VARIABLES,
         "air_pressure",
