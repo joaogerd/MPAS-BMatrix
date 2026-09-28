@@ -134,7 +134,10 @@ def bmatrix_job_spec(
     if not isinstance(install, Mapping) or not install.get("root"):
         raise ValueError("install.root é obrigatório.")
     env_name = str(stack_contract["env_name"])
-    module_root_value = Path(str(stack_contract["module_root"])).expanduser()
+    module_relative = str(stack_contract["module_root_template"]).format(
+        env_name=env_name
+    )
+    module_root_value = Path(module_relative).expanduser()
     module_root = str(
         module_root_value
         if module_root_value.is_absolute()
