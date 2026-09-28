@@ -282,9 +282,13 @@ def runtime_contract(config: Mapping[str, Any]) -> dict[str, Any]:
     stack = payload.get("stack")
     if not isinstance(stack, Mapping):
         raise ConfigurationError("O contrato MONAN-JEDI não possui bloco stack.")
-    for key in ("env_name", "env_module", "site_setup", "module_root_template"):
+    for key in ("env_name", "env_module", "site_setup", "module_root"):
         if not isinstance(stack.get(key), str) or not stack[key]:
             raise ConfigurationError(f"stack.{key} inválido no contrato MONAN-JEDI.")
+    if "{" in str(stack["module_root"]) or "}" in str(stack["module_root"]):
+        raise ConfigurationError("stack.module_root deve ser um caminho concreto.")
+    if Path(str(stack["site_setup"])).is_absolute():
+        raise ConfigurationError("stack.site_setup deve ser relativo a STACK_ROOT.")
 
     return dict(payload)
 
