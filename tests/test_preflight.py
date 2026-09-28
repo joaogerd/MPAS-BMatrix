@@ -114,6 +114,21 @@ def test_preflight_accepts_complete_runtime_contract(tmp_path: Path) -> None:
     assert checks["mesh.partition"]["status"] == "OK"
 
 
+def test_preflight_rejects_unexpected_runtime_public_anchors(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    install = Path(str(config["install"]["root"]))  # type: ignore[index]
+    manifest = install / "share/monan-jedi/install-manifest.json"
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["public_anchors"] = ["MONAN_JEDI_INSTALL_ROOT"]
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = preflight_payload(config)
+
+    assert report["valid"] is False
+    checks = {item["name"]: item for item in report["checks"]}
+    assert checks["install.runtime_contract_v2"]["status"] == "INVALID"
+
+
 def test_preflight_fails_early_for_missing_runtime_executable(tmp_path: Path) -> None:
     config = _config(tmp_path)
     install = Path(str(config["install"]["root"]))  # type: ignore[index]
