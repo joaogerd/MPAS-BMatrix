@@ -177,15 +177,15 @@ if payload.get("contract") != "monan-jedi-runtime-v2":
 stack = payload.get("stack")
 if not isinstance(stack, dict):
     raise SystemExit("runtime contract stack block is missing")
-for key in ("env_name", "site_setup", "env_module", "module_root"):
+for key in ("env_name", "site_setup", "env_module", "module_root_template"):
     if not isinstance(stack.get(key), str) or not stack[key]:
         raise SystemExit(f"runtime contract stack.{key} is invalid")
-if "{" in stack["module_root"] or "}" in stack["module_root"]:
-    raise SystemExit("runtime contract stack.module_root must be concrete")
+if "{env_name}" not in stack["module_root_template"]:
+    raise SystemExit("runtime contract stack.module_root_template must contain {env_name}")
 print(stack["env_name"])
 print(stack["site_setup"])
 print(stack["env_module"])
-print(stack["module_root"])
+print(stack["module_root_template"])
 PY
   )" || {
     echo "ERRO: invalid MONAN-JEDI runtime contract: ${__JACI_CONTRACT_MANIFEST}" >&2
@@ -202,7 +202,7 @@ PY
   export STACK_ENV_NAME="${STACK_ENV_NAME:-${__JACI_CONTRACT_VALUES[0]}}"
   export STACK_SITE_SETUP="${STACK_SITE_SETUP:-${__JACI_CONTRACT_VALUES[1]}}"
   export STACK_ENV_MODULE="${STACK_ENV_MODULE:-${__JACI_CONTRACT_VALUES[2]}}"
-  __JACI_CONTRACT_MODULE_ROOT="${__JACI_CONTRACT_VALUES[3]}"
+  __JACI_CONTRACT_MODULE_ROOT="${__JACI_CONTRACT_VALUES[3]//\{env_name\}/${STACK_ENV_NAME}}"
 fi
 
 if [[ -z "${STACK_ENV_NAME:-}" || -z "${STACK_SITE_SETUP:-}" || -z "${STACK_ENV_MODULE:-}" ]]; then
