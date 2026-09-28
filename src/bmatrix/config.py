@@ -272,6 +272,8 @@ def runtime_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         raise ConfigurationError("A raiz do contrato MONAN-JEDI deve ser um objeto JSON.")
     if payload.get("schema_version") != 2:
         raise ConfigurationError("O contrato MONAN-JEDI deve usar schema_version=2.")
+    if payload.get("schema_version") != 2:
+        raise ConfigurationError("schema_version do contrato MONAN-JEDI deve ser 2.")
     if payload.get("ecosystem_contract_version") != 2:
         raise ConfigurationError(
             "A instalação MONAN-JEDI não publica ecosystem_contract_version=2."
