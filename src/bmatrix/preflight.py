@@ -76,15 +76,20 @@ def _mapping(config: Mapping[str, object], key: str) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
 
 
-def _normalized_stack_root(path: Path) -> Path:
-    """Accept either the spack-stack checkout or its immediate parent."""
-    setup_relative = Path("configs/sites/tier2/jaci/setup.sh")
+def _normalized_stack_root(path: Path, site_setup: str) -> Path:
+    """Accept either the selected stack checkout or its immediate parent."""
+    setup_relative = Path(site_setup)
     if (path / setup_relative).is_file():
         return path
     child = path / "spack-stack"
     if (child / setup_relative).is_file():
         return child
     return path
+
+
+def _contract_module_root(stack_root: Path, raw: str) -> Path:
+    candidate = Path(raw).expanduser()
+    return candidate if candidate.is_absolute() else stack_root / candidate
 
 
 def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
@@ -171,22 +176,26 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
     if not stack_root_value:
         checks.append(_missing("environment.variables.STACK_ROOT", "directory"))
     else:
-        stack_root = _normalized_stack_root(_path(stack_root_value))
+        stack_contract = contract.get("stack") if isinstance(contract, Mapping) else None
+        site_setup = (
+            str(stack_contract["site_setup"])
+            if isinstance(stack_contract, Mapping)
+            else "configs/sites/tier2/jaci/setup.sh"
+        )
+        stack_root = _normalized_stack_root(_path(stack_root_value), site_setup)
         checks.append(_directory("environment.variables.STACK_ROOT", stack_root))
-        if contract is not None:
-            stack_contract = contract.get("stack")
-            if isinstance(stack_contract, Mapping):
-                site_setup = str(stack_contract["site_setup"])
-                env_name = str(stack_contract["env_name"])
-                module_template = str(stack_contract["module_root_template"])
-                checks.append(
-                    _file(
-                        "stack.site_setup",
-                        stack_root / site_setup,
-                    )
+        if isinstance(stack_contract, Mapping):
+            checks.append(
+                _file(
+                    "stack.site_setup",
+                    stack_root / site_setup,
                 )
-                module_root = stack_root / module_template.format(env_name=env_name)
-                checks.append(_directory("stack.module_root", module_root))
+            )
+            module_root = _contract_module_root(
+                stack_root,
+                str(stack_contract["module_root"]),
+            )
+            checks.append(_directory("stack.module_root", module_root))
 
     mesh = _mapping(config, "mesh")
     grid_value = mesh.get("grid")
