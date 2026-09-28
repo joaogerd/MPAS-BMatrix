@@ -54,7 +54,8 @@ def _run_loader(
         manifest.write_text(
             json.dumps(
                 {
-                    "ecosystem_contract_version": 2,
+                    "schema_version": 2,
+                "ecosystem_contract_version": 2,
                     "contract": "monan-jedi-runtime-v2",
                     "public_anchors": public_anchors
                     if public_anchors is not None
