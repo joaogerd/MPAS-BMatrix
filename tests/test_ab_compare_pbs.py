@@ -29,7 +29,7 @@ def _config(tmp_path: Path) -> tuple[dict[str, object], Path, Path]:
                     "env_name": "jaci-test",
                     "env_module": "test/jedi-mpas-env/2.0.0",
                     "site_setup": "configs/sites/test/setup.sh",
-                    "module_root_template": "envs/{env_name}/modules",
+                    "module_root": "envs/jaci-test/modules",
                 },
             }
         ),
