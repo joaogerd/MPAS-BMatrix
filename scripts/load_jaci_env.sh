@@ -177,6 +177,8 @@ import sys
 from pathlib import Path
 
 payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if payload.get("schema_version") != 2:
+    raise SystemExit("schema_version must be 2")
 if payload.get("ecosystem_contract_version") != 2:
     raise SystemExit("ecosystem_contract_version must be 2")
 if payload.get("contract") != "monan-jedi-runtime-v2":
