@@ -128,12 +128,14 @@ unset PYTHONHOME
 unset PYTHONNOUSERSITE
 
 source {LOADER!s}
+LOADER_RC=$?
 
 printf 'RESULT_PYTHONPATH=%s\n' "${{PYTHONPATH-__UNSET__}}"
 printf 'RESULT_PYTHONNOUSERSITE=%s\n' "${{PYTHONNOUSERSITE-__UNSET__}}"
 printf 'MODULE_PURGE_COUNT=%s\n' "$MODULE_PURGE_COUNT"
 printf 'MODULE_LOAD_COUNT=%s\n' "$MODULE_LOAD_COUNT"
 printf 'ACTIVE_STACK_ROOT=%s\n' "${{MONAN_JEDI_ACTIVE_STACK_ROOT-__UNSET__}}"
+exit "$LOADER_RC"
 """
 
     env = os.environ.copy()
