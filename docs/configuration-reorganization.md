@@ -3,6 +3,13 @@
 This report describes the configuration corrections implemented after the audit
 in [`configuration-audit.md`](configuration-audit.md).
 
+> **Historical migration record.** This document records intermediate names and
+> decisions from the reorganization. It is not the current user-facing
+> configuration contract. For current operation use
+> [`configuration.md`](configuration.md): the ecosystem-wide runtime anchors
+> are only `MONAN_JEDI_INSTALL_ROOT` and `STACK_ROOT`, and maintained
+> MPAS-BMatrix runs require the installed MONAN-JEDI ecosystem contract v2.
+
 ## 1. Final layout
 
 ```text
@@ -206,23 +213,33 @@ The old unused `jaci.yaml` schema (`dates`, `external_data`, `physics`, `nmc`,
 
 ## 8. Portability and environment validation
 
-Committed personal paths were replaced by explicit environment variables:
+At this stage of the migration, committed personal paths were replaced by
+explicit environment variables. Several names listed in the original audit were
+subsequently retired and must **not** be treated as current API:
 
 ```text
-BMATRIX_ROOT
-WORK_ROOT
-MONAN_JEDI_SOURCE
-MONAN_JEDI_INSTALL
-MONAN_JEDI_UNBALANCE_EXE
-MPAS_MESH_ROOT
-MPAS_JEDI_STATIC_ROOT
-STACK_ROOT
+historical/tutorial-only:
+  BMATRIX_ROOT
+  WORK_ROOT
+
+deprecated compatibility only:
+  MONAN_JEDI_INSTALL
+
+retired from maintained configuration:
+  MONAN_JEDI_SOURCE
+  MONAN_JEDI_UNBALANCE_EXE
+  MPAS_MESH_ROOT
+  MPAS_JEDI_STATIC_ROOT
+
+current ecosystem anchor:
+  STACK_ROOT
 ```
 
-Missing variables raise `ConfigurationError` with the YAML key path and variable
-name, preventing PBS generation with literal `${VARIABLE}` paths.
+The other current ecosystem anchor is `MONAN_JEDI_INSTALL_ROOT`. Missing
+configuration-time variables raise `ConfigurationError` with the YAML key path
+and variable name, preventing PBS generation with literal `${VARIABLE}` paths.
 
-The JACI base also records `STACK_ROOT` under `environment.variables` so it can be
+The JACI base records `STACK_ROOT` under `environment.variables` so it can be
 rendered into each PBS script before the environment loader is sourced.
 
 ## 9. PBS environment propagation found by smoke testing
