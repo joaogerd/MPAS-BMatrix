@@ -153,9 +153,18 @@ if [[ ! -d "${STACK_ROOT}" ]]; then
 fi
 
 # Prefer the stack identity published by the installed MONAN-JEDI runtime.
-# Legacy defaults remain only for older installations without contract v2.
+# Once MONAN_JEDI_INSTALL_ROOT is selected, the v2 contract is mandatory.
+# Legacy defaults remain only for old standalone loader usage where no modern
+# MONAN-JEDI installation root was selected at all.
 __JACI_CONTRACT_MANIFEST="${MONAN_JEDI_INSTALL_ROOT:-}/share/monan-jedi/install-manifest.json"
-if [[ -n "${MONAN_JEDI_INSTALL_ROOT:-}" && -f "${__JACI_CONTRACT_MANIFEST}" ]]; then
+if [[ -n "${MONAN_JEDI_INSTALL_ROOT:-}" && ! -f "${__JACI_CONTRACT_MANIFEST}" ]]; then
+  echo "ERRO: MONAN_JEDI_INSTALL_ROOT does not publish ecosystem contract v2:" >&2
+  echo "  ${__JACI_CONTRACT_MANIFEST}" >&2
+  echo "Reinstall/update MONAN-JEDI before using the maintained MPAS-BMatrix runtime." >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+if [[ -n "${MONAN_JEDI_INSTALL_ROOT:-}" ]]; then
   if ! command -v python3 >/dev/null 2>&1; then
     echo "ERRO: python3 is required to read the MONAN-JEDI runtime contract." >&2
     return 1 2>/dev/null || exit 1
@@ -172,6 +181,8 @@ if payload.get("ecosystem_contract_version") != 2:
     raise SystemExit("ecosystem_contract_version must be 2")
 if payload.get("contract") != "monan-jedi-runtime-v2":
     raise SystemExit("unsupported runtime contract identifier")
+if payload.get("public_anchors") != ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"]:
+    raise SystemExit("unexpected runtime contract public anchors")
 stack = payload.get("stack")
 if not isinstance(stack, dict):
     raise SystemExit("runtime contract stack block is missing")
@@ -202,7 +213,7 @@ PY
 fi
 
 if [[ -z "${STACK_ENV_NAME:-}" || -z "${STACK_SITE_SETUP:-}" || -z "${STACK_ENV_MODULE:-}" ]]; then
-  echo "WARNING: MONAN-JEDI runtime contract v2 is unavailable; using deprecated JACI stack defaults."
+  echo "WARNING: no MONAN_JEDI_INSTALL_ROOT was selected; using deprecated JACI stack defaults."
   export STACK_ENV_NAME="${STACK_ENV_NAME:-jaci-mpas-jedi-gcc12-craympich}"
   export STACK_SITE_SETUP="${STACK_SITE_SETUP:-configs/sites/tier2/jaci/setup.sh}"
   export STACK_ENV_MODULE="${STACK_ENV_MODULE:-cray-mpich/8.1.31/none/none/jedi-mpas-env/1.0.0}"

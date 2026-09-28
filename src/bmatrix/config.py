@@ -276,6 +276,10 @@ def runtime_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         )
     if payload.get("contract") != "monan-jedi-runtime-v2":
         raise ConfigurationError("Identificador de contrato MONAN-JEDI não suportado.")
+    if payload.get("public_anchors") != ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"]:
+        raise ConfigurationError(
+            "Conjunto de âncoras públicas inesperado no contrato MONAN-JEDI."
+        )
 
     stack = payload.get("stack")
     if not isinstance(stack, Mapping):
