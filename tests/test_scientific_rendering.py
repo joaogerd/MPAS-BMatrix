@@ -701,6 +701,7 @@ def _dirac_prepare_config(tmp_path: Path) -> dict[str, object]:
     manifest.write_text(
         json.dumps(
             {
+                "schema_version": 2,
                 "ecosystem_contract_version": 2,
                 "contract": "monan-jedi-runtime-v2",
                 "public_anchors": ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"],
