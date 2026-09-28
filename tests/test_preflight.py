@@ -44,7 +44,7 @@ def _config(tmp_path: Path) -> dict[str, object]:
                     "env_name": "jaci-mpas-jedi-gcc12-craympich",
                     "env_module": "test/jedi-mpas-env/2.0.0",
                     "site_setup": "configs/sites/tier2/jaci/setup.sh",
-                    "module_root_template": "envs/{env_name}/modules",
+                    "module_root": "envs/jaci-mpas-jedi-gcc12-craympich/modules",
                 },
             }
         ),
