@@ -201,3 +201,12 @@ the VBAL static staging code does: `<graph basename>.part.<mesh.nproc>`.
 For `STACK_ROOT`, the preflight follows the loader contract and accepts either
 the spack-stack checkout itself or its immediate parent containing a
 `spack-stack/` child.
+
+
+### Legacy standalone loader
+
+`scripts/load_jaci_env.sh` no longer invents a JACI environment/module when
+`MONAN_JEDI_INSTALL_ROOT` is absent. The maintained path is the installed
+runtime contract v2. A deprecated standalone invocation is possible only with
+explicit `STACK_ENV_NAME`, `STACK_SITE_SETUP` and `STACK_ENV_MODULE`;
+this prevents hidden defaults from becoming a second source of truth.

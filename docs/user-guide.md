@@ -95,9 +95,13 @@ only `STACK_ROOT`; do not copy the JEDI module name into local scripts.
 For backward compatibility, `MONAN_JEDI_INSTALL` is still accepted when the
 canonical `MONAN_JEDI_INSTALL_ROOT` variable is not set. Once an install root
 is selected, however, its v2 manifest is mandatory: the interactive loader and
-`mpas-bmatrix check-config` both fail if it is absent or invalid. The loader's
-deprecated JACI defaults exist only for old standalone use where no
-MONAN-JEDI install root is selected at all; they are not a maintained-run path.
+`mpas-bmatrix check-config` both fail if it is absent or invalid.
+
+There are no implicit JACI stack defaults anymore. Deprecated standalone use
+without `MONAN_JEDI_INSTALL_ROOT` is accepted only when
+`STACK_ENV_NAME`, `STACK_SITE_SETUP` and `STACK_ENV_MODULE` are supplied
+explicitly (with `STACK_MODULE_ROOT` optional). Maintained runs should not use
+that compatibility path.
 
 The compatible x1.10242 invariant, mesh, graph, partition and other scientific
 case inputs are declared directly in `configs/jaci-x1.10242.yaml`. The current
