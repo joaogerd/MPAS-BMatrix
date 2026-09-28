@@ -134,7 +134,12 @@ def bmatrix_job_spec(
     if not isinstance(install, Mapping) or not install.get("root"):
         raise ValueError("install.root é obrigatório.")
     env_name = str(stack_contract["env_name"])
-    module_root = str(Path(stack_root) / str(stack_contract["module_root_template"]).format(env_name=env_name))
+    module_root_value = Path(str(stack_contract["module_root"])).expanduser()
+    module_root = str(
+        module_root_value
+        if module_root_value.is_absolute()
+        else Path(stack_root) / module_root_value
+    )
     runtime_environment.update(
         {
             "MONAN_JEDI_INSTALL_ROOT": str(install["root"]),
