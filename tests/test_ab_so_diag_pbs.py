@@ -21,6 +21,7 @@ def test_so_diag_pbs_uses_one_cpu_and_isolated_workspace(tmp_path: Path, monkeyp
     manifest.write_text(
         json.dumps(
             {
+                "schema_version": 2,
                 "ecosystem_contract_version": 2,
                 "contract": "monan-jedi-runtime-v2",
                 "public_anchors": ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"],
