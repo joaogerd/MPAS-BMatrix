@@ -31,7 +31,11 @@ def _fake_stack(tmp_path: Path) -> Path:
 
 
 def _run_loader(
-    tmp_path: Path, *, already_loaded: bool, identity: str = "none"
+    tmp_path: Path,
+    *,
+    already_loaded: bool,
+    identity: str = "none",
+    public_anchors: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     stack_root = _fake_stack(tmp_path)
     module_root = (
@@ -50,7 +54,9 @@ def _run_loader(
             {
                 "ecosystem_contract_version": 2,
                 "contract": "monan-jedi-runtime-v2",
-                "public_anchors": ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"],
+                "public_anchors": public_anchors
+                if public_anchors is not None
+                else ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"],
                 "stack": {
                     "env_name": "jaci-mpas-jedi-gcc12-craympich",
                     "env_module": DEFAULT_STACK_ENV_MODULE,
@@ -138,6 +144,17 @@ printf 'ACTIVE_STACK_ROOT=%s\n' "${{MONAN_JEDI_ACTIVE_STACK_ROOT-__UNSET__}}"
         capture_output=True,
         check=False,
     )
+
+
+def test_loader_rejects_unexpected_runtime_public_anchors(tmp_path: Path) -> None:
+    result = _run_loader(
+        tmp_path,
+        already_loaded=False,
+        public_anchors=["MONAN_JEDI_INSTALL_ROOT"],
+    )
+
+    assert result.returncode != 0
+    assert "invalid MONAN-JEDI runtime contract" in (result.stderr + result.stdout)
 
 
 def test_loader_removes_spack_pythonpath_after_module_load(tmp_path: Path) -> None:
