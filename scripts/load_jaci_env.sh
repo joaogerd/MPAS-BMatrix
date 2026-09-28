@@ -215,12 +215,18 @@ PY
 fi
 
 if [[ -z "${STACK_ENV_NAME:-}" || -z "${STACK_SITE_SETUP:-}" || -z "${STACK_ENV_MODULE:-}" ]]; then
-  echo "WARNING: no MONAN_JEDI_INSTALL_ROOT was selected; using deprecated JACI stack defaults."
-  export STACK_ENV_NAME="${STACK_ENV_NAME:-jaci-mpas-jedi-gcc12-craympich}"
-  export STACK_SITE_SETUP="${STACK_SITE_SETUP:-configs/sites/tier2/jaci/setup.sh}"
-  export STACK_ENV_MODULE="${STACK_ENV_MODULE:-cray-mpich/8.1.31/none/none/jedi-mpas-env/1.0.0}"
-  __JACI_CONTRACT_MODULE_TEMPLATE="${__JACI_CONTRACT_MODULE_TEMPLATE:-envs/{env_name}/modules}"
+  echo "ERRO: stack identity is not configured." >&2
+  echo "Set MONAN_JEDI_INSTALL_ROOT to a current runtime contract v2." >&2
+  echo "For deprecated standalone use, explicitly set all of:" >&2
+  echo "  STACK_ENV_NAME, STACK_SITE_SETUP, STACK_ENV_MODULE" >&2
+  return 1 2>/dev/null || exit 1
 fi
+
+if [[ -z "${MONAN_JEDI_INSTALL_ROOT:-}" ]]; then
+  echo "WARNING: using explicitly supplied legacy stack identity without MONAN_JEDI_INSTALL_ROOT." >&2
+  echo "Migrate to the installed MONAN-JEDI runtime contract v2." >&2
+fi
+__JACI_CONTRACT_MODULE_TEMPLATE="${__JACI_CONTRACT_MODULE_TEMPLATE:-envs/{env_name}/modules}"
 
 # Accept either the spack-stack checkout itself or its immediate parent. Resolve
 # the actual checkout before deriving the module directory.
