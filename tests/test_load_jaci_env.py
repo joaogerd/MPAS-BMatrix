@@ -56,7 +56,7 @@ def _run_loader(
                     "env_name": "jaci-mpas-jedi-gcc12-craympich",
                     "env_module": DEFAULT_STACK_ENV_MODULE,
                     "site_setup": "configs/sites/tier2/jaci/setup.sh",
-                    "module_root_template": "envs/{env_name}/modules",
+                    "module_root": "envs/jaci-mpas-jedi-gcc12-craympich/modules",
                 },
             }
         ),
