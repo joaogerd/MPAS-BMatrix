@@ -213,6 +213,13 @@ if [[ -z "${STACK_ENV_NAME:-}" || -z "${STACK_SITE_SETUP:-}" || -z "${STACK_ENV_
   __JACI_CONTRACT_MODULE_ROOT="${__JACI_CONTRACT_MODULE_ROOT:-envs/${STACK_ENV_NAME}/modules}"
 fi
 
+# STACK_ENV_NAME / SITE_SETUP / ENV_MODULE may all be supplied explicitly for
+# a legacy installation. The module-root fallback is independent and must still
+# be initialized when no v2 manifest supplied it.
+if [[ -z "${__JACI_CONTRACT_MODULE_ROOT:-}" ]]; then
+  __JACI_CONTRACT_MODULE_ROOT="envs/${STACK_ENV_NAME}/modules"
+fi
+
 # Accept either the spack-stack checkout itself or its immediate parent. Resolve
 # the actual checkout before deriving the module directory.
 if [[ -f "${STACK_ROOT}/${STACK_SITE_SETUP}" ]]; then
