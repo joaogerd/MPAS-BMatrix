@@ -206,18 +206,17 @@ PY
 fi
 
 if [[ -z "${STACK_ENV_NAME:-}" || -z "${STACK_SITE_SETUP:-}" || -z "${STACK_ENV_MODULE:-}" ]]; then
-  echo "WARNING: MONAN-JEDI runtime contract v2 is unavailable; using deprecated JACI stack defaults."
-  export STACK_ENV_NAME="${STACK_ENV_NAME:-jaci-mpas-jedi-gcc12-craympich}"
-  export STACK_SITE_SETUP="${STACK_SITE_SETUP:-configs/sites/tier2/jaci/setup.sh}"
-  export STACK_ENV_MODULE="${STACK_ENV_MODULE:-cray-mpich/8.1.31/none/none/jedi-mpas-env/1.0.0}"
-  __JACI_CONTRACT_MODULE_ROOT="${__JACI_CONTRACT_MODULE_ROOT:-envs/${STACK_ENV_NAME}/modules}"
+  echo "ERRO: MONAN-JEDI ecosystem runtime contract v2 is required." >&2
+  echo "Install/update MONAN-JEDI and export MONAN_JEDI_INSTALL_ROOT before loading MPAS-BMatrix." >&2
+  echo "Expected manifest: ${MONAN_JEDI_INSTALL_ROOT:-<unset>}/share/monan-jedi/install-manifest.json" >&2
+  unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_ROOT __JACI_CONTRACT_VALUES
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack
+  return 1 2>/dev/null || exit 1
 fi
 
-# STACK_ENV_NAME / SITE_SETUP / ENV_MODULE may all be supplied explicitly for
-# a legacy installation. The module-root fallback is independent and must still
-# be initialized when no v2 manifest supplied it.
 if [[ -z "${__JACI_CONTRACT_MODULE_ROOT:-}" ]]; then
-  __JACI_CONTRACT_MODULE_ROOT="envs/${STACK_ENV_NAME}/modules"
+  echo "ERRO: runtime contract did not provide stack.module_root_template." >&2
+  return 1 2>/dev/null || exit 1
 fi
 
 # Accept either the spack-stack checkout itself or its immediate parent. Resolve
