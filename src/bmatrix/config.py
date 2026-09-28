@@ -272,8 +272,6 @@ def runtime_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         raise ConfigurationError("A raiz do contrato MONAN-JEDI deve ser um objeto JSON.")
     if payload.get("schema_version") != 2:
         raise ConfigurationError("O contrato MONAN-JEDI deve usar schema_version=2.")
-    if payload.get("schema_version") != 2:
-        raise ConfigurationError("schema_version do contrato MONAN-JEDI deve ser 2.")
     if payload.get("ecosystem_contract_version") != 2:
         raise ConfigurationError(
             "A instalação MONAN-JEDI não publica ecosystem_contract_version=2."
@@ -284,13 +282,15 @@ def runtime_contract(config: Mapping[str, Any]) -> dict[str, Any]:
     stack = payload.get("stack")
     if not isinstance(stack, Mapping):
         raise ConfigurationError("O contrato MONAN-JEDI não possui bloco stack.")
-    for key in ("env_name", "env_module", "site_setup", "module_root"):
+    for key in ("env_name", "env_module", "site_setup", "module_root_template"):
         if not isinstance(stack.get(key), str) or not stack[key]:
             raise ConfigurationError(f"stack.{key} inválido no contrato MONAN-JEDI.")
-    if "{" in str(stack["module_root"]) or "}" in str(stack["module_root"]):
-        raise ConfigurationError("stack.module_root deve ser um caminho concreto.")
     if Path(str(stack["site_setup"])).is_absolute():
         raise ConfigurationError("stack.site_setup deve ser relativo a STACK_ROOT.")
+    if Path(str(stack["module_root_template"])).is_absolute():
+        raise ConfigurationError("stack.module_root_template deve ser relativo a STACK_ROOT.")
+    if "{env_name}" not in str(stack["module_root_template"]):
+        raise ConfigurationError("stack.module_root_template deve conter {env_name}.")
 
     return dict(payload)
 
