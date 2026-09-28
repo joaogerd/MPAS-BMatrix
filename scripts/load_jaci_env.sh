@@ -172,6 +172,8 @@ if payload.get("ecosystem_contract_version") != 2:
     raise SystemExit("ecosystem_contract_version must be 2")
 if payload.get("contract") != "monan-jedi-runtime-v2":
     raise SystemExit("unsupported runtime contract identifier")
+if payload.get("public_anchors") != ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"]:
+    raise SystemExit("unexpected runtime contract public anchors")
 stack = payload.get("stack")
 if not isinstance(stack, dict):
     raise SystemExit("runtime contract stack block is missing")
