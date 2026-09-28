@@ -36,6 +36,7 @@ def _run_loader(
     already_loaded: bool,
     identity: str = "none",
     public_anchors: list[str] | None = None,
+    write_manifest: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     stack_root = _fake_stack(tmp_path)
     module_root = (
@@ -48,25 +49,26 @@ def _run_loader(
 
     install = tmp_path / "install"
     manifest = install / "share" / "monan-jedi" / "install-manifest.json"
-    manifest.parent.mkdir(parents=True, exist_ok=True)
-    manifest.write_text(
-        json.dumps(
-            {
-                "ecosystem_contract_version": 2,
-                "contract": "monan-jedi-runtime-v2",
-                "public_anchors": public_anchors
-                if public_anchors is not None
-                else ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"],
-                "stack": {
-                    "env_name": "jaci-mpas-jedi-gcc12-craympich",
-                    "env_module": DEFAULT_STACK_ENV_MODULE,
-                    "site_setup": "configs/sites/tier2/jaci/setup.sh",
-                    "module_root_template": "envs/{env_name}/modules",
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    if write_manifest:
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(
+            json.dumps(
+                {
+                    "ecosystem_contract_version": 2,
+                    "contract": "monan-jedi-runtime-v2",
+                    "public_anchors": public_anchors
+                    if public_anchors is not None
+                    else ["MONAN_JEDI_INSTALL_ROOT", "STACK_ROOT"],
+                    "stack": {
+                        "env_name": "jaci-mpas-jedi-gcc12-craympich",
+                        "env_module": DEFAULT_STACK_ENV_MODULE,
+                        "site_setup": "configs/sites/tier2/jaci/setup.sh",
+                        "module_root_template": "envs/{env_name}/modules",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
 
     if identity == "match":
         active_root = str(stack_root.resolve())
@@ -144,6 +146,19 @@ printf 'ACTIVE_STACK_ROOT=%s\n' "${{MONAN_JEDI_ACTIVE_STACK_ROOT-__UNSET__}}"
         capture_output=True,
         check=False,
     )
+
+
+def test_loader_requires_runtime_contract_when_install_root_is_selected(
+    tmp_path: Path,
+) -> None:
+    result = _run_loader(
+        tmp_path,
+        already_loaded=False,
+        write_manifest=False,
+    )
+
+    assert result.returncode != 0
+    assert "does not publish ecosystem contract v2" in (result.stderr + result.stdout)
 
 
 def test_loader_rejects_unexpected_runtime_public_anchors(tmp_path: Path) -> None:
