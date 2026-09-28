@@ -29,7 +29,7 @@ def test_so_diag_pbs_uses_one_cpu_and_isolated_workspace(tmp_path: Path, monkeyp
                     "env_name": "jaci-test",
                     "env_module": "test/jedi-mpas-env/2.0.0",
                     "site_setup": "configs/sites/test/setup.sh",
-                    "module_root": "envs/jaci-test/modules",
+                    "module_root_template": "envs/{env_name}/modules",
                 },
             }
         ),
