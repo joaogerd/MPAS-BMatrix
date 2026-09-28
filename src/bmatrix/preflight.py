@@ -87,8 +87,9 @@ def _normalized_stack_root(path: Path, site_setup: str) -> Path:
     return path
 
 
-def _contract_module_root(stack_root: Path, raw: str) -> Path:
-    candidate = Path(raw).expanduser()
+def _contract_module_root(stack_root: Path, template: str, env_name: str) -> Path:
+    relative = template.format(env_name=env_name)
+    candidate = Path(relative).expanduser()
     return candidate if candidate.is_absolute() else stack_root / candidate
 
 
@@ -193,7 +194,8 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
             )
             module_root = _contract_module_root(
                 stack_root,
-                str(stack_contract["module_root"]),
+                str(stack_contract["module_root_template"]),
+                str(stack_contract["env_name"]),
             )
             checks.append(_directory("stack.module_root", module_root))
 
