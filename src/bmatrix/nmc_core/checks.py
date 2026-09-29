@@ -126,13 +126,19 @@ def _required_bflow_input_variables(config: Mapping[str, object]) -> tuple[str, 
 def _decode_xtime(variable: object) -> tuple[str, ...]:
     """Decode MPAS character xtime values without assuming one fixed string width."""
     import numpy as np
-    from netCDF4 import chartostring
-    values = variable[:]
-    if values.ndim > 1:
-        values = chartostring(values)
+    values = np.asarray(variable[:])
+    if values.ndim > 1 and values.dtype.kind in {"S", "U"}:
+        decoded: list[str] = []
+        for row in values:
+            parts = [
+                item.decode() if isinstance(item, (bytes, np.bytes_)) else str(item)
+                for item in np.asarray(row).reshape(-1)
+            ]
+            decoded.append("".join(parts).strip("\\x00 "))
+        return tuple(decoded)
     return tuple(
-        str(item.decode() if isinstance(item, bytes) else item).strip("\\x00 ")
-        for item in np.asarray(values).reshape(-1)
+        str(item.decode() if isinstance(item, (bytes, np.bytes_)) else item).strip("\\x00 ")
+        for item in values.reshape(-1)
     )
 
 
