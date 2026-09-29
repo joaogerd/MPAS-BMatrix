@@ -12,9 +12,9 @@ REQUIRED = ["theta","uReconstructZonal","uReconstructMeridional","surface_pressu
 def _state(path: Path, valid_time: str, n_cells: int = 3, omit: str | None = None) -> None:
     with netCDF4.Dataset(path, "w", format="NETCDF4") as ds:
         ds.createDimension("Time", 1); ds.createDimension("nCells", n_cells)
-        ds.createDimension("nVertLevels", 2); ds.createDimension("StrLen", len(valid_time))
+        ds.createDimension("nVertLevels", 2); ds.createDimension("StrLen", len(valid_time) + 2)
         xtime = ds.createVariable("xtime", "S1", ("Time", "StrLen"))
-        xtime[:] = np.asarray([list(valid_time)], dtype="S1")
+        xtime[:] = np.asarray([list(valid_time + "  ")], dtype="S1")
         for name in REQUIRED:
             if name == omit: continue
             dims = ("Time","nCells") if name == "surface_pressure" else ("Time","nCells","nVertLevels")
