@@ -59,6 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Valida o manifest NMC/mpaswf antes de iniciar BFLOW.",
     )
     check_manifest.add_argument("--manifest", type=Path, required=True)
+    check_manifest.add_argument("--config", default=DEFAULT_CONFIG, help="Contrato científico usado para validar os da_state.")
     check_manifest.set_defaults(handler=_check_manifest)
 
     weights = sub.add_parser("weights", help="Gera apenas pesos ESMPy MPAS <-> lat-lon no workspace BFLOW.")
@@ -134,7 +135,8 @@ def _check_config(args: argparse.Namespace) -> int:
 
 
 def _check_manifest(args: argparse.Namespace) -> int:
-    report = validate_nmc_manifest(args.manifest)
+    config = load_config(args.config)
+    report = validate_nmc_manifest(args.manifest, config=config)
     print(json.dumps(report, indent=2, default=str, sort_keys=True))
     return 0
 
