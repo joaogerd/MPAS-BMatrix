@@ -13,8 +13,8 @@ def _state(path: Path, valid_time: str, n_cells: int = 3, omit: str | None = Non
     with netCDF4.Dataset(path, "w", format="NETCDF4") as ds:
         ds.createDimension("Time", 1); ds.createDimension("nCells", n_cells)
         ds.createDimension("nVertLevels", 2)
-        xtime = ds.createVariable("xtime", str, ("Time",))
-        xtime[0] = valid_time
+        xtime = ds.createVariable("xtime", str, ())
+        xtime.assignValue(valid_time)
         for name in REQUIRED:
             if name == omit: continue
             dims = ("Time","nCells") if name == "surface_pressure" else ("Time","nCells","nVertLevels")
