@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Mapping
 import hashlib
 import json
+
+import netCDF4
 
 from .manifest import ManifestError, read_manifest
 from .model import MINIMUM_PAIRS, NMCManifestPair, parse_time
@@ -89,7 +92,116 @@ def _validate_contract_sidecar(path: Path, pair_count: int) -> dict[str, object]
     }
 
 
-def validate_manifest(path: str | Path, *, minimum_pairs: int = MINIMUM_PAIRS) -> dict[str, object]:
+
+def _required_bflow_input_variables(config: Mapping[str, object]) -> tuple[str, ...]:
+    """Derive the MPAS input-variable contract from the scientific BFLOW YAML."""
+    bflow = config.get("bflow")
+    if not isinstance(bflow, Mapping):
+        raise ManifestError("Resolved configuration has no bflow mapping.")
+    names: set[str] = set()
+    transform = bflow.get("wind_transform")
+    if isinstance(transform, Mapping):
+        for key in ("zonal_file_variable", "meridional_file_variable", "template_file_variable"):
+            value = transform.get(key)
+            if isinstance(value, str) and value:
+                names.add(value)
+    copied = bflow.get("copy_variables", [])
+    if isinstance(copied, list):
+        names.update(value for value in copied if isinstance(value, str) and value)
+    derived = bflow.get("derived_variables", [])
+    if isinstance(derived, list):
+        for spec in derived:
+            if not isinstance(spec, Mapping):
+                continue
+            for key in ("theta_file", "mixing_ratio_file", "template_file"):
+                value = spec.get(key)
+                if isinstance(value, str) and value:
+                    names.add(value)
+            inputs = spec.get("inputs")
+            if isinstance(inputs, list):
+                names.update(value for value in inputs if isinstance(value, str) and value)
+    return tuple(sorted(names))
+
+
+def _decode_xtime(variable: object) -> tuple[str, ...]:
+    """Decode MPAS character xtime values without assuming one fixed string width."""
+    import numpy as np
+    from netCDF4 import chartostring
+    values = variable[:]
+    if values.ndim > 1:
+        values = chartostring(values)
+    return tuple(
+        str(item.decode() if isinstance(item, bytes) else item).strip("\\x00 ")
+        for item in np.asarray(values).reshape(-1)
+    )
+
+
+def _inspect_state(path: Path, required: tuple[str, ...], expected_time: str) -> dict[str, object]:
+    """Validate one MPAS da_state before expensive BFLOW preprocessing."""
+    try:
+        with netCDF4.Dataset(path) as dataset:
+            missing = [name for name in required if name not in dataset.variables]
+            if missing:
+                raise ManifestError(f"BFLOW input {path} is missing required MPAS variables: {', '.join(missing)}")
+            for dim in ("Time", "nCells", "nVertLevels"):
+                if dim not in dataset.dimensions:
+                    raise ManifestError(f"BFLOW input {path} is missing required MPAS dimension {dim}.")
+            if "xtime" not in dataset.variables:
+                raise ManifestError(f"BFLOW input {path} is missing MPAS time variable xtime.")
+            times = _decode_xtime(dataset.variables["xtime"])
+            if expected_time not in times:
+                raise ManifestError(
+                    f"BFLOW input {path} xtime={times!r} does not contain manifest valid_time {expected_time!r}."
+                )
+            return {
+                "data_model": dataset.data_model,
+                "nCells": len(dataset.dimensions["nCells"]),
+                "nVertLevels": len(dataset.dimensions["nVertLevels"]),
+                "required_variables": list(required),
+                "xtime": list(times),
+            }
+    except OSError as exc:
+        raise ManifestError(f"Cannot open BFLOW NetCDF input {path}: {exc}") from exc
+
+
+def validate_scientific_pairs(
+    pairs: list[NMCManifestPair], config: Mapping[str, object]
+) -> dict[str, object]:
+    """Validate NetCDF structure, valid time and pairwise mesh compatibility."""
+    required = _required_bflow_input_variables(config)
+    records: list[dict[str, object]] = []
+    reference_shape: tuple[int, int] | None = None
+    for pair in pairs:
+        expected = pair.valid_time
+        f048 = _inspect_state(pair.f048, required, expected)
+        f024 = _inspect_state(pair.f024, required, expected)
+        shape48 = (int(f048["nCells"]), int(f048["nVertLevels"]))
+        shape24 = (int(f024["nCells"]), int(f024["nVertLevels"]))
+        if shape48 != shape24:
+            raise ManifestError(
+                f"NMC pair {pair.valid_time} uses incompatible MPAS grids: f048={shape48}, f024={shape24}."
+            )
+        if reference_shape is None:
+            reference_shape = shape48
+        elif shape48 != reference_shape:
+            raise ManifestError(
+                f"NMC campaign changes MPAS grid at {pair.valid_time}: {shape48}; expected {reference_shape}."
+            )
+        records.append({"valid_time": pair.valid_time, "f048": f048, "f024": f024})
+    return {
+        "valid": True,
+        "required_variables": list(required),
+        "mesh_shape": list(reference_shape) if reference_shape else None,
+        "pairs": records,
+    }
+
+
+def validate_manifest(
+    path: str | Path,
+    *,
+    minimum_pairs: int = MINIMUM_PAIRS,
+    config: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     """Read and validate a producer manifest and its optional versioned contract."""
     path = Path(path)
     pairs = read_manifest(path)
@@ -99,4 +211,10 @@ def validate_manifest(path: str | Path, *, minimum_pairs: int = MINIMUM_PAIRS) -
     contract = _validate_contract_sidecar(path, len(pairs))
     report["producer_contract"] = contract
     report["producer_contract_verified"] = contract is not None
+    if config is not None:
+        report["scientific_contract"] = validate_scientific_pairs(pairs, config)
+        report["scientific_contract_verified"] = True
+    else:
+        report["scientific_contract"] = None
+        report["scientific_contract_verified"] = False
     return report
