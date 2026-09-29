@@ -18,6 +18,7 @@ from .hdiag_core.prepare import prepare as prepare_hdiag
 from .hdiag_core.runner import submit as submit_hdiag, validate as validate_hdiag
 from .hdiag_core.model import hdiag_workspace
 from .nicas_core.prepare import prepare as prepare_nicas
+from .nmc_core.checks import validate_manifest as validate_nmc_manifest
 from .nicas_core.runner import submit as submit_nicas, validate as validate_nicas
 from .nicas_core.model import nicas_workspace
 from .plots_core.runner import (
@@ -189,6 +190,10 @@ def build(config: Mapping[str, object], request: BuildRequest) -> PipelinePlan:
 
     for stage in pipeline_plan.stages:
         if stage == "bflow":
+            # Execution preflight: keep plan/dry-run side-effect free, but fail
+            # before workspace creation or ESMF/BFLOW computation.
+            if request.manifest:
+                validate_nmc_manifest(request.manifest, config=config)
             active_pairs = pairs or read_manifest(paths.bflow / "manifest.tsv")
             prepare_bflow(config, active_pairs, paths.bflow, force=request.clean)
             run_bflow_pipeline(config, paths.bflow, active_pairs, clean_output=request.clean, skip_weights=request.skip_weights)
