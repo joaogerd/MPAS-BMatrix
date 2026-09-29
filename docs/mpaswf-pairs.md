@@ -173,6 +173,16 @@ valid_time    f048_state    f024_state    f048_restart    f024_restart
 
 This file is the hand-off between `mpaswf` and `MPAS-BMatrix`.
 
+Current `mpaswf` also writes `mpas-forecast-manifest.json` beside the TSV.
+That sidecar declares the versioned `monan-nmc-forecast-pairs-v1` contract and
+contains the producer/consumer identity, exact TSV columns, pair semantics,
+pair count and SHA-256 of the TSV. `mpas-bmatrix check-manifest` verifies the
+sidecar automatically when present and rejects a mismatched/stale pair.
+
+A historical TSV without the JSON sidecar remains accepted during migration;
+in that case the validation report sets `producer_contract_verified: false`.
+Newly generated campaigns should always carry both files.
+
 ## 4. Use the `mpaswf` manifest in this package
 
 After `mpaswf` produces the manifest, return to this repository:
