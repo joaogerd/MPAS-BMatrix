@@ -10,11 +10,11 @@ from bmatrix.nmc_core.manifest import ManifestError
 REQUIRED = ["theta","uReconstructZonal","uReconstructMeridional","surface_pressure","qv","qc","qr","qi","qs","qg","pressure_p","pressure_base"]
 
 def _state(path: Path, valid_time: str, n_cells: int = 3, omit: str | None = None) -> None:
-    with netCDF4.Dataset(path, "w", format="NETCDF3_64BIT_DATA") as ds:
+    with netCDF4.Dataset(path, "w", format="NETCDF4") as ds:
         ds.createDimension("Time", 1); ds.createDimension("nCells", n_cells)
-        ds.createDimension("nVertLevels", 2); ds.createDimension("StrLen", 64)
-        xtime = ds.createVariable("xtime", "S1", ("Time", "StrLen"))
-        xtime[:] = np.asarray(list(valid_time.ljust(64)), dtype="S1").reshape(1, 64)
+        ds.createDimension("nVertLevels", 2)
+        xtime = ds.createVariable("xtime", str, ("Time",))
+        xtime[0] = valid_time
         for name in REQUIRED:
             if name == omit: continue
             dims = ("Time","nCells") if name == "surface_pressure" else ("Time","nCells","nVertLevels")
