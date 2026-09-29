@@ -129,9 +129,6 @@ class PipelinePlan:
 
 def _pairs_from_request(config: Mapping[str, object], request: BuildRequest) -> tuple[list[BflowPair], Path]:
     if request.manifest:
-        # Fail before workspace creation/ESMF/BFLOW if the producer hand-off or
-        # MPAS scientific state contract is incompatible with this calibration.
-        validate_nmc_manifest(request.manifest, config=config)
         pairs = read_manifest(request.manifest)
         if not pairs:
             raise WorkflowError("Manifesto BFLOW/NMC não contém pares.")
@@ -193,6 +190,10 @@ def build(config: Mapping[str, object], request: BuildRequest) -> PipelinePlan:
 
     for stage in pipeline_plan.stages:
         if stage == "bflow":
+            # Execution preflight: keep plan/dry-run side-effect free, but fail
+            # before workspace creation or ESMF/BFLOW computation.
+            if request.manifest:
+                validate_nmc_manifest(request.manifest, config=config)
             active_pairs = pairs or read_manifest(paths.bflow / "manifest.tsv")
             prepare_bflow(config, active_pairs, paths.bflow, force=request.clean)
             run_bflow_pipeline(config, paths.bflow, active_pairs, clean_output=request.clean, skip_weights=request.skip_weights)
