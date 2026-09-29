@@ -18,6 +18,7 @@ from .hdiag_core.prepare import prepare as prepare_hdiag
 from .hdiag_core.runner import submit as submit_hdiag, validate as validate_hdiag
 from .hdiag_core.model import hdiag_workspace
 from .nicas_core.prepare import prepare as prepare_nicas
+from .nmc_core.checks import validate_manifest as validate_nmc_manifest
 from .nicas_core.runner import submit as submit_nicas, validate as validate_nicas
 from .nicas_core.model import nicas_workspace
 from .plots_core.runner import (
@@ -128,6 +129,9 @@ class PipelinePlan:
 
 def _pairs_from_request(config: Mapping[str, object], request: BuildRequest) -> tuple[list[BflowPair], Path]:
     if request.manifest:
+        # Fail before workspace creation/ESMF/BFLOW if the producer hand-off or
+        # MPAS scientific state contract is incompatible with this calibration.
+        validate_nmc_manifest(request.manifest, config=config)
         pairs = read_manifest(request.manifest)
         if not pairs:
             raise WorkflowError("Manifesto BFLOW/NMC não contém pares.")
