@@ -14,7 +14,7 @@ def _state(path: Path, valid_time: str, n_cells: int = 3, omit: str | None = Non
         ds.createDimension("Time", 1); ds.createDimension("nCells", n_cells)
         ds.createDimension("nVertLevels", 2); ds.createDimension("StrLen", 64)
         xtime = ds.createVariable("xtime", "S1", ("Time", "StrLen"))
-        xtime[:] = np.frombuffer(valid_time.ljust(64).encode(), dtype="S1").reshape(1, 64)
+        xtime[:] = netCDF4.stringtochar(np.asarray([valid_time], dtype="S64"))
         for name in REQUIRED:
             if name == omit: continue
             dims = ("Time","nCells") if name == "surface_pressure" else ("Time","nCells","nVertLevels")
