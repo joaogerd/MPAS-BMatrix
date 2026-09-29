@@ -134,10 +134,10 @@ def _decode_xtime(variable: object) -> tuple[str, ...]:
                 item.decode() if isinstance(item, (bytes, np.bytes_)) else str(item)
                 for item in np.asarray(row).reshape(-1)
             ]
-            decoded.append("".join(parts).strip("\\x00 "))
+            decoded.append("".join(parts).rstrip("\x00 "))
         return tuple(decoded)
     return tuple(
-        str(item.decode() if isinstance(item, (bytes, np.bytes_)) else item).strip("\\x00 ")
+        str(item.decode() if isinstance(item, (bytes, np.bytes_)) else item).rstrip("\x00 ")
         for item in values.reshape(-1)
     )
 
