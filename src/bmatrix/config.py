@@ -238,6 +238,12 @@ def validate_config_shape(config: Mapping[str, Any]) -> None:
     for key in ("name", "grid"):
         if not isinstance(mesh.get(key), str) or not mesh[key]:
             raise ConfigurationError(f"mesh.{key} é obrigatório.")
+    nvertlevels = mesh.get("nvertlevels")
+    if not isinstance(nvertlevels, int) or isinstance(nvertlevels, bool) or nvertlevels <= 0:
+        raise ConfigurationError(
+            "mesh.nvertlevels é obrigatório e deve ser um inteiro positivo; "
+            "não existe número vertical implícito."
+        )
     bflow = config["bflow"]
     for key in ("nmc", "products", "regridding", "wind_transform"):
         if not isinstance(bflow.get(key), Mapping):
