@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from ..artifacts import StageManifest, write_manifest
+from ..artifacts import StageManifest, read_manifest, require_scientific_identity, scientific_identity, write_manifest
 from ..hdiag_core.checks import check as validate_hdiag
 from ..hdiag_core.model import hdiag_date
 from ..shell import require_file, symlink_force, write_text
@@ -16,6 +16,8 @@ from .static import link_nicas_support
 def prepare(config, hdiag_workspace: str | Path, workspace: str | Path | None = None, clean: bool = False) -> Path:
     hdiag_root = Path(hdiag_workspace)
     validate_hdiag(hdiag_root)
+    identity = scientific_identity(config)
+    require_scientific_identity(read_manifest(hdiag_root, expected_stage="hdiag"), identity)
     hdiag_run = hdiag_root / "HDIAG"
     date = hdiag_date(hdiag_root)
     out = Path(workspace) if workspace else nicas_workspace(config, hdiag_root)
@@ -51,7 +53,7 @@ def prepare(config, hdiag_workspace: str | Path, workspace: str | Path | None = 
         stage="nicas", workspace=str(out.resolve()),
         inputs={"hdiag_workspace": str(hdiag_root.resolve())},
         outputs={"nicas": str((out / "merge" / "mpas_nicas.nc").resolve()), "nicas_norm": str((out / "merge" / "mpas.nicas_norm.nc").resolve()), "dirac_nicas": str((out / "merge" / "mpas.dirac_nicas.nc").resolve())},
-        metadata={"variables": list(variables), "date": date}, status="prepared",
+        metadata={"variables": list(variables), "date": date, "scientific_identity": identity}, status="prepared",
     ))
     write_text(out / "README.md", f"# NICAS split/merge workspace\n\nHDIAG workspace: `{hdiag_root}`\n")
     print("=== NICAS split/merge workspace ===")
