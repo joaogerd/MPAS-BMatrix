@@ -362,7 +362,7 @@ unset __JACI_HAD_NOUNSET __JACI_SETUP_STATUS
 if ! __jaci_validate_target_compiler; then
   cd "${__JACI_ENV_OLDPWD}" 2>/dev/null || true
   unset __JACI_ENV_OLDPWD __JACI_ENV_FORCE __JACI_ENV_CONDA_PREFIX __JACI_ENV_STACK_INPUT __JACI_CONTRACT_MANIFEST __JACI_CONTRACT_MODULE_TEMPLATE __JACI_CONTRACT_VALUES
-  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack __jaci_module_loaded __jaci_validate_target_compiler __jaci_module_loaded __jaci_validate_target_compiler
+  unset -f __jaci_sanitize_python_environment __jaci_verify_python_environment __jaci_normalize_path __jaci_stack_identity_matches __jaci_mark_active_stack __jaci_module_loaded __jaci_validate_target_compiler
   return 1 2>/dev/null || exit 1
 fi
 
