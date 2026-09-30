@@ -288,3 +288,12 @@ A new stage requires:
 
 Do not place stage-specific scientific parameters in `configs/jaci.yaml` or
 `configs/jaci-x1.10242.yaml`.
+
+
+## Scientific identity of reusable B-matrix artifacts
+
+A reusable covariance product is not identified by a mesh label or by array sizes alone. Stage manifests carry a versioned `scientific_identity` containing the case `mesh_name`, `nvertlevels`, SHA-256 of canonical `mesh.grid:latCell/lonCell`, and SHA-256 of `static.invariant:zgrid`.
+
+VBAL records this identity from the configured case. HDIAG verifies the upstream VBAL identity before preparation and propagates it; NICAS does the same for HDIAG. A workspace produced for a different horizontal or vertical geometry is therefore rejected before downstream scientific execution, even when `nCells` and `nVertLevels` happen to be equal.
+
+The hashes identify geometry, not filenames. Moving a valid grid/invariant file does not change the identity. Changing a coordinate does. This is deliberately independent of the current 55-level x1.10242 case and supports future 100+ level configurations without code changes.
