@@ -220,7 +220,46 @@ def _validate_mesh_identity(
     }
 
 
-def _inspect_state(path: Path, required: tuple[str, ...], expected_time: str, *, mesh_name: str, canonical_mesh: Mapping[str, object]) -> dict[str, object]:
+def _vertical_grid_contract(config: Mapping[str, object], expected_nvertlevels: int) -> dict[str, object]:
+    """Fingerprint the case's canonical MPAS vertical interfaces from static.invariant."""
+    static = config.get("static")
+    if not isinstance(static, Mapping) or not isinstance(static.get("invariant"), str):
+        raise ManifestError("static.invariant is required to identify the MPAS vertical grid.")
+    path = Path(str(static["invariant"])).expanduser()
+    if not path.is_file():
+        raise ManifestError(f"Canonical static.invariant does not exist: {path}")
+    try:
+        with netCDF4.Dataset(path) as dataset:
+            if "zgrid" not in dataset.variables:
+                raise ManifestError(
+                    f"Canonical static.invariant {path} is missing MPAS vertical-grid variable zgrid."
+                )
+            values = np.asarray(dataset.variables["zgrid"][:], dtype=np.float64)
+            dims = tuple(dataset.variables["zgrid"].dimensions)
+    except OSError as exc:
+        raise ManifestError(f"Cannot open canonical static.invariant {path}: {exc}") from exc
+    if "nVertLevelsP1" not in dims or "nCells" not in dims:
+        raise ManifestError(
+            f"static.invariant zgrid has dimensions {dims!r}; expected nVertLevelsP1 and nCells."
+        )
+    level_axis = dims.index("nVertLevelsP1")
+    if values.shape[level_axis] != expected_nvertlevels + 1:
+        raise ManifestError(
+            f"static.invariant zgrid has {values.shape[level_axis]} interfaces, but "
+            f"mesh.nvertlevels={expected_nvertlevels} requires {expected_nvertlevels + 1}."
+        )
+    digest = hashlib.sha256(np.asarray(values, dtype="<f8").tobytes(order="C")).hexdigest()
+    return {
+        "source": str(path.resolve()),
+        "variable": "zgrid",
+        "dimensions": list(dims),
+        "interface_count": int(values.shape[level_axis]),
+        "sha256": digest,
+        "values": values,
+    }
+
+
+def _inspect_state(path: Path, required: tuple[str, ...], expected_time: str, *, mesh_name: str, canonical_mesh: Mapping[str, object], vertical_grid: Mapping[str, object]) -> dict[str, object]:
     """Validate one MPAS da_state before expensive BFLOW preprocessing."""
     try:
         with netCDF4.Dataset(path) as dataset:
@@ -240,6 +279,17 @@ def _inspect_state(path: Path, required: tuple[str, ...], expected_time: str, *,
             mesh_identity = _validate_mesh_identity(
                 path, dataset, mesh_name=mesh_name, canonical=canonical_mesh
             )
+            vertical_proof = "case-invariant-plus-level-count"
+            if "zgrid" in dataset.variables:
+                state_zgrid = np.asarray(dataset.variables["zgrid"][:], dtype=np.float64)
+                reference_zgrid = vertical_grid["values"]
+                if state_zgrid.shape != reference_zgrid.shape or not np.allclose(
+                    state_zgrid, reference_zgrid, rtol=0.0, atol=1.0e-8
+                ):
+                    raise ManifestError(
+                        f"BFLOW input {path} zgrid does not match the canonical static.invariant vertical grid."
+                    )
+                vertical_proof = "state-zgrid-matches-case-invariant"
             return {
                 "data_model": dataset.data_model,
                 "nCells": len(dataset.dimensions["nCells"]),
@@ -247,6 +297,7 @@ def _inspect_state(path: Path, required: tuple[str, ...], expected_time: str, *,
                 "required_variables": list(required),
                 "xtime": list(times),
                 "mesh": mesh_identity,
+                "vertical_grid_proof": vertical_proof,
             }
     except OSError as exc:
         raise ManifestError(f"Cannot open BFLOW NetCDF input {path}: {exc}") from exc
@@ -259,15 +310,16 @@ def validate_scientific_pairs(
     required = _required_bflow_input_variables(config)
     mesh_name, mesh_path, expected_nvertlevels = _mesh_contract(config)
     canonical_mesh = _mesh_geometry(mesh_path)
+    vertical_grid = _vertical_grid_contract(config, expected_nvertlevels)
     records: list[dict[str, object]] = []
     reference_shape: tuple[int, int] | None = None
     for pair in pairs:
         expected = pair.valid_time
         f048 = _inspect_state(
-            pair.f048, required, expected, mesh_name=mesh_name, canonical_mesh=canonical_mesh
+            pair.f048, required, expected, mesh_name=mesh_name, canonical_mesh=canonical_mesh, vertical_grid=vertical_grid
         )
         f024 = _inspect_state(
-            pair.f024, required, expected, mesh_name=mesh_name, canonical_mesh=canonical_mesh
+            pair.f024, required, expected, mesh_name=mesh_name, canonical_mesh=canonical_mesh, vertical_grid=vertical_grid
         )
         shape48 = (int(f048["nCells"]), int(f048["nVertLevels"]))
         shape24 = (int(f024["nCells"]), int(f024["nVertLevels"]))
@@ -298,7 +350,16 @@ def validate_scientific_pairs(
             "geometry_sha256": canonical_mesh["sha256"],
             "nCells": canonical_mesh["nCells"],
             "nVertLevels": expected_nvertlevels,
-            "vertical_identity": "case-declared-level-count",
+            "vertical_identity": {
+                "source": vertical_grid["source"],
+                "variable": vertical_grid["variable"],
+                "dimensions": vertical_grid["dimensions"],
+                "interface_count": vertical_grid["interface_count"],
+                "zgrid_sha256": vertical_grid["sha256"],
+                "state_proof": (
+                    "direct-when-zgrid-present; otherwise case-invariant-plus-level-count"
+                ),
+            },
         },
         "pairs": records,
     }
