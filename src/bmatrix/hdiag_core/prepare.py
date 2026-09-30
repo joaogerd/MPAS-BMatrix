@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from ..artifacts import StageManifest, read_manifest, write_manifest
+from ..artifacts import StageManifest, read_manifest, require_scientific_identity, scientific_identity, write_manifest
 from ..shell import write_text
 from ..vbal_core.model import vbal_date
 from ..vbal_core.validate import validate as validate_vbal
@@ -24,6 +24,8 @@ def prepare(config, vbal_workspace: str | Path, workspace: str | Path | None = N
     """Prepare HDIAG from raw samples plus calibrated VBAL inverse."""
     vbal_root = Path(vbal_workspace)
     validate_vbal(vbal_root)
+    identity = scientific_identity(config)
+    require_scientific_identity(read_manifest(vbal_root, expected_stage="vbal"), identity)
     sample_stem = _sample_stem(vbal_root)
     samples = sorted((vbal_root / "samples").glob(f"{sample_stem}_*.nc"))
     if not samples:
@@ -50,7 +52,7 @@ def prepare(config, vbal_workspace: str | Path, workspace: str | Path | None = N
                 "cor_rh": str((run_dir / "mpas.cor_rh.nc").resolve()),
                 "cor_rv": str((run_dir / "mpas.cor_rv.nc").resolve()),
             },
-            metadata={"members": len(samples), "date": date, "sample_stem": sample_stem},
+            metadata={"members": len(samples), "date": date, "sample_stem": sample_stem, "scientific_identity": identity},
             status="prepared",
         )
     )

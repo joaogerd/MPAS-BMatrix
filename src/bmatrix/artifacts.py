@@ -96,3 +96,58 @@ def read_manifest(workspace: str | Path, *, expected_stage: str | None = None) -
             f"Manifesto {path} pertence à etapa '{manifest.stage}', esperado '{expected_stage}'."
         )
     return manifest
+
+
+def scientific_identity(config: Mapping[str, object]) -> dict[str, object]:
+    """Build the case identity that reusable B-matrix artifacts must preserve."""
+    import hashlib
+    import numpy as np
+    import netCDF4
+
+    mesh = config.get("mesh")
+    static = config.get("static")
+    if not isinstance(mesh, Mapping) or not isinstance(static, Mapping):
+        raise ArtifactError("Scientific identity requires mesh and static configuration.")
+    name, grid, invariant, nvert = (
+        mesh.get("name"), mesh.get("grid"), static.get("invariant"), mesh.get("nvertlevels")
+    )
+    if not isinstance(name, str) or not isinstance(grid, str) or not isinstance(invariant, str):
+        raise ArtifactError("Scientific identity requires mesh.name, mesh.grid and static.invariant.")
+    if not isinstance(nvert, int) or isinstance(nvert, bool) or nvert <= 0:
+        raise ArtifactError("Scientific identity requires a positive mesh.nvertlevels.")
+
+    def fingerprint(path: Path, variables: tuple[str, ...]) -> str:
+        if not path.is_file():
+            raise ArtifactError(f"Scientific identity source is missing: {path}")
+        digest = hashlib.sha256()
+        try:
+            with netCDF4.Dataset(path) as dataset:
+                for variable in variables:
+                    if variable not in dataset.variables:
+                        raise ArtifactError(f"Scientific identity source {path} is missing {variable}.")
+                    digest.update(variable.encode("utf-8"))
+                    digest.update(np.asarray(dataset.variables[variable][:], dtype="<f8").tobytes(order="C"))
+        except OSError as exc:
+            raise ArtifactError(f"Cannot read scientific identity source {path}: {exc}") from exc
+        return digest.hexdigest()
+
+    return {
+        "schema_version": 1,
+        "mesh_name": name,
+        "nvertlevels": nvert,
+        "horizontal_geometry_sha256": fingerprint(Path(grid).expanduser(), ("latCell", "lonCell")),
+        "vertical_geometry_sha256": fingerprint(Path(invariant).expanduser(), ("zgrid",)),
+    }
+
+
+def require_scientific_identity(
+    manifest: StageManifest,
+    expected: Mapping[str, object],
+) -> None:
+    """Reject an upstream stage produced for a different scientific grid."""
+    actual = manifest.metadata.get("scientific_identity")
+    if actual != dict(expected):
+        raise ArtifactError(
+            f"Scientific identity mismatch in {manifest.stage} manifest: "
+            f"actual={actual!r}, expected={dict(expected)!r}."
+        )

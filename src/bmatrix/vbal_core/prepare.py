@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from ..artifacts import StageManifest, write_manifest
+from ..artifacts import StageManifest, scientific_identity, write_manifest
 from ..shell import write_text
 from .config_files import write_vbal_pbs, write_vbal_yaml
 from .model import iso_date, read_bflow_samples, vbal_workspace
@@ -33,7 +33,7 @@ def prepare(config, bflow_workspace: str | Path, workspace: str | Path | None = 
                 "vbal": str((run_dir / "mpas_vbal.nc").resolve()),
                 "sampling": str((run_dir / "mpas_sampling.nc").resolve()),
             },
-            metadata={"members": len(samples), "date": date, "sample_stem": sample_stem},
+            metadata={"members": len(samples), "date": date, "sample_stem": sample_stem, "scientific_identity": scientific_identity(config)},
             status="prepared",
         )
     )
