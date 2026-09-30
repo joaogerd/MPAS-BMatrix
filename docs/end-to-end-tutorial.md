@@ -205,7 +205,10 @@ source scripts/load_jaci_env.sh
 ```
 
 The loader makes the compiled scientific runtime available while restoring the
-Conda Python command and removing spack-stack Python search paths.
+Conda Python command and removing spack-stack Python search paths. It also
+validates the compiler selected by the JACI site setup. A module conflict must
+make this command fail; a conflict followed by `Loaded JACI MPAS-JEDI environment`
+is not an acceptable state.
 
 Verify the result:
 
@@ -214,6 +217,7 @@ command -v python
 command -v mpaswf
 command -v mpas-bmatrix
 python -c "import sys, numpy; print(sys.executable); print(numpy.__file__)"
+module list 2>&1 | grep -F 'gcc-native/12.3'
 ```
 
 Expected:

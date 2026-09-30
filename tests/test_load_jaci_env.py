@@ -11,12 +11,13 @@ LOADER = REPO_ROOT / "scripts" / "load_jaci_env.sh"
 DEFAULT_STACK_ENV_MODULE = "cray-mpich/8.1.31/none/none/jedi-mpas-env/1.0.0"
 
 
-def _fake_stack(tmp_path: Path) -> Path:
+def _fake_stack(tmp_path: Path, *, setup_text: str | None = None) -> Path:
     stack_root = tmp_path / "spack-stack"
     setup = stack_root / "configs" / "sites" / "tier2" / "jaci" / "setup.sh"
     setup.parent.mkdir(parents=True)
     setup.write_text(
-        '# fake JACI setup for loader regression tests\n: "${JACI_SETUP_OPTIONAL_UNSET}"\n',
+        setup_text
+        or '# fake JACI setup for loader regression tests\n: "${JACI_SETUP_OPTIONAL_UNSET}"\n',
         encoding="utf-8",
     )
 
@@ -37,8 +38,9 @@ def _run_loader(
     identity: str = "none",
     public_anchors: list[str] | None = None,
     write_manifest: bool = True,
+    setup_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    stack_root = _fake_stack(tmp_path)
+    stack_root = _fake_stack(tmp_path, setup_text=setup_text)
     module_root = (
         stack_root
         / "envs"
@@ -173,6 +175,23 @@ def test_loader_rejects_unexpected_runtime_public_anchors(tmp_path: Path) -> Non
 
     assert result.returncode != 0
     assert "invalid MONAN-JEDI runtime contract" in (result.stderr + result.stdout)
+
+
+def test_loader_rejects_site_setup_that_misses_target_compiler(tmp_path: Path) -> None:
+    result = _run_loader(
+        tmp_path,
+        already_loaded=False,
+        setup_text=(
+            'export TARGET_COMPILER="gcc-native/12.3"\n'
+            'export LOADEDMODULES="PrgEnv-gnu/8.6.0:gcc/12.3.0/zstd/1.5.7"\n'
+        ),
+    )
+
+    assert result.returncode != 0
+    output = result.stderr + result.stdout
+    assert "did not leave TARGET_COMPILER loaded: gcc-native/12.3" in output
+    assert "gcc/12.3.0/zstd/1.5.7" in output
+    assert "Loaded JACI MPAS-JEDI environment" not in output
 
 
 def test_loader_removes_spack_pythonpath_after_module_load(tmp_path: Path) -> None:
