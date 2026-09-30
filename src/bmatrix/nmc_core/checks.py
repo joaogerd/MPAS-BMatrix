@@ -6,6 +6,8 @@ from typing import Mapping
 import hashlib
 import json
 
+import numpy as np
+
 import netCDF4
 
 from .manifest import ManifestError, read_manifest
@@ -142,7 +144,80 @@ def _decode_xtime(variable: object) -> tuple[str, ...]:
     )
 
 
-def _inspect_state(path: Path, required: tuple[str, ...], expected_time: str) -> dict[str, object]:
+def _mesh_contract(config: Mapping[str, object]) -> tuple[str, Path]:
+    """Return the declared mesh identity and canonical MPAS grid file."""
+    mesh = config.get("mesh")
+    if not isinstance(mesh, Mapping):
+        raise ManifestError("Resolved configuration has no mesh mapping.")
+    name = mesh.get("name")
+    grid = mesh.get("grid")
+    if not isinstance(name, str) or not name:
+        raise ManifestError("mesh.name is required for NMC scientific preflight.")
+    if not isinstance(grid, str) or not grid:
+        raise ManifestError("mesh.grid is required for NMC scientific preflight.")
+    path = Path(grid).expanduser()
+    if not path.is_file():
+        raise ManifestError(f"Canonical MPAS mesh.grid does not exist: {path}")
+    return name, path
+
+
+def _mesh_geometry(path: Path) -> dict[str, object]:
+    """Read the minimal geometry needed to identify an MPAS cell mesh."""
+    try:
+        with netCDF4.Dataset(path) as dataset:
+            for name in ("latCell", "lonCell"):
+                if name not in dataset.variables:
+                    raise ManifestError(f"MPAS mesh identity source {path} is missing {name}.")
+            lat = np.asarray(dataset.variables["latCell"][:], dtype=np.float64).reshape(-1)
+            lon = np.asarray(dataset.variables["lonCell"][:], dtype=np.float64).reshape(-1)
+    except OSError as exc:
+        raise ManifestError(f"Cannot open MPAS mesh identity source {path}: {exc}") from exc
+    if lat.shape != lon.shape or lat.size == 0:
+        raise ManifestError(f"Invalid latCell/lonCell geometry in {path}.")
+    digest = hashlib.sha256()
+    digest.update(np.asarray(lat, dtype="<f8").tobytes(order="C"))
+    digest.update(np.asarray(lon, dtype="<f8").tobytes(order="C"))
+    return {"lat": lat, "lon": lon, "sha256": digest.hexdigest(), "nCells": int(lat.size)}
+
+
+def _validate_mesh_identity(
+    state_path: Path,
+    dataset: object,
+    *,
+    mesh_name: str,
+    canonical: Mapping[str, object],
+) -> dict[str, object]:
+    """Prove that a da_state uses the configured canonical MPAS cell geometry."""
+    for name in ("latCell", "lonCell"):
+        if name not in dataset.variables:
+            raise ManifestError(
+                f"BFLOW input {state_path} cannot prove mesh identity {mesh_name!r}: missing {name}."
+            )
+    lat = np.asarray(dataset.variables["latCell"][:], dtype=np.float64).reshape(-1)
+    lon = np.asarray(dataset.variables["lonCell"][:], dtype=np.float64).reshape(-1)
+    ref_lat = canonical["lat"]
+    ref_lon = canonical["lon"]
+    if lat.shape != ref_lat.shape or lon.shape != ref_lon.shape:
+        raise ManifestError(
+            f"BFLOW input {state_path} does not match canonical mesh {mesh_name}: coordinate shape differs."
+        )
+    # MPAS state and grid files should carry the same cell coordinates. allclose
+    # tolerates representation precision without accepting a geometrically
+    # different mesh.
+    if not np.allclose(lat, ref_lat, rtol=0.0, atol=1.0e-12) or not np.allclose(
+        lon, ref_lon, rtol=0.0, atol=1.0e-12
+    ):
+        raise ManifestError(
+            f"BFLOW input {state_path} does not match canonical MPAS mesh {mesh_name} latCell/lonCell."
+        )
+    return {
+        "name": mesh_name,
+        "geometry_sha256": canonical["sha256"],
+        "nCells": canonical["nCells"],
+    }
+
+
+def _inspect_state(path: Path, required: tuple[str, ...], expected_time: str, *, mesh_name: str, canonical_mesh: Mapping[str, object]) -> dict[str, object]:
     """Validate one MPAS da_state before expensive BFLOW preprocessing."""
     try:
         with netCDF4.Dataset(path) as dataset:
@@ -159,12 +234,16 @@ def _inspect_state(path: Path, required: tuple[str, ...], expected_time: str) ->
                 raise ManifestError(
                     f"BFLOW input {path} xtime={times!r} does not contain manifest valid_time {expected_time!r}."
                 )
+            mesh_identity = _validate_mesh_identity(
+                path, dataset, mesh_name=mesh_name, canonical=canonical_mesh
+            )
             return {
                 "data_model": dataset.data_model,
                 "nCells": len(dataset.dimensions["nCells"]),
                 "nVertLevels": len(dataset.dimensions["nVertLevels"]),
                 "required_variables": list(required),
                 "xtime": list(times),
+                "mesh": mesh_identity,
             }
     except OSError as exc:
         raise ManifestError(f"Cannot open BFLOW NetCDF input {path}: {exc}") from exc
@@ -175,12 +254,18 @@ def validate_scientific_pairs(
 ) -> dict[str, object]:
     """Validate NetCDF structure, valid time and pairwise mesh compatibility."""
     required = _required_bflow_input_variables(config)
+    mesh_name, mesh_path = _mesh_contract(config)
+    canonical_mesh = _mesh_geometry(mesh_path)
     records: list[dict[str, object]] = []
     reference_shape: tuple[int, int] | None = None
     for pair in pairs:
         expected = pair.valid_time
-        f048 = _inspect_state(pair.f048, required, expected)
-        f024 = _inspect_state(pair.f024, required, expected)
+        f048 = _inspect_state(
+            pair.f048, required, expected, mesh_name=mesh_name, canonical_mesh=canonical_mesh
+        )
+        f024 = _inspect_state(
+            pair.f024, required, expected, mesh_name=mesh_name, canonical_mesh=canonical_mesh
+        )
         shape48 = (int(f048["nCells"]), int(f048["nVertLevels"]))
         shape24 = (int(f024["nCells"]), int(f024["nVertLevels"]))
         if shape48 != shape24:
@@ -198,6 +283,12 @@ def validate_scientific_pairs(
         "valid": True,
         "required_variables": list(required),
         "mesh_shape": list(reference_shape) if reference_shape else None,
+        "mesh_identity": {
+            "name": mesh_name,
+            "grid": str(mesh_path.resolve()),
+            "geometry_sha256": canonical_mesh["sha256"],
+            "nCells": canonical_mesh["nCells"],
+        },
         "pairs": records,
     }
 
