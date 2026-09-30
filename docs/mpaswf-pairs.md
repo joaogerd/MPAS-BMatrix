@@ -268,3 +268,12 @@ Two MPAS meshes may have the same `nCells` and `nVertLevels` while assigning cel
 Scientific preflight requires every f048/f024 state to expose `nVertLevels` equal to the case declaration. NICAS also consumes the explicit declaration when converting `dirac_level_from_top`; there is no implicit 55-level fallback.
 
 This count proves vertical-size compatibility, not full vertical-coordinate identity. Parameters such as `vbal.sampling.reduced levels` remain separate scientific choices: they may equal the full model level count for a given experiment, but they are not aliases for `mesh.nvertlevels` and must not be silently synchronized.
+
+
+### Vertical-coordinate identity
+
+Equal `nVertLevels` proves only vertical array compatibility. The case's authoritative vertical-coordinate identity is taken from `static.invariant:zgrid`, the MPAS geometric height of layer interfaces. Preflight requires its `nVertLevelsP1` interface count to equal `mesh.nvertlevels + 1` and records a SHA-256 fingerprint of the canonical `zgrid` values.
+
+When an NMC `da_state` itself contains `zgrid`, it is compared directly with the invariant and the report records a direct proof. When the DA stream does not publish `zgrid`, the report deliberately records the weaker proof `case-invariant-plus-level-count`: the state has the configured number of levels, while vertical-coordinate identity comes from the case invariant. This distinction prevents the validation report from claiming evidence that is absent from the state file.
+
+A future 100+ level MONAN configuration therefore requires no code change: provide the corresponding `mesh.nvertlevels` and compatible `static.invariant`; its own `zgrid` fingerprint becomes the vertical identity.

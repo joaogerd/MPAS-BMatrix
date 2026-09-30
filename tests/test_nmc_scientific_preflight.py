@@ -24,8 +24,17 @@ def _state(path: Path, valid_time: str, n_cells: int = 3, omit: str | None = Non
             dims = ("Time","nCells") if name == "surface_pressure" else ("Time","nCells","nVertLevels")
             ds.createVariable(name, "f4", dims)
 
+def _invariant(tmp_path: Path, shift: float = 0.0) -> Path:
+    path = tmp_path / ("invariant-shifted.nc" if shift else "invariant.nc")
+    with netCDF4.Dataset(path, "w") as ds:
+        ds.createDimension("nVertLevelsP1", 3)
+        ds.createDimension("nCells", 3)
+        zgrid = ds.createVariable("zgrid", "f8", ("nVertLevelsP1", "nCells"))
+        zgrid[:] = np.array([[0.0, 10.0, 20.0], [1000.0, 1010.0, 1020.0], [3000.0, 3010.0, 3020.0]]) + shift
+    return path
+
 def _config(mesh: Path):
-    return {"mesh":{"name":"x1.test","grid":str(mesh),"nvertlevels":2},"bflow":{"wind_transform":{"zonal_file_variable":"uReconstructZonal","meridional_file_variable":"uReconstructMeridional","template_file_variable":"theta"},"copy_variables":REQUIRED[1:],"derived_variables":[{"inputs":["pressure_p","pressure_base"],"template_file":"pressure_p"},{"theta_file":"theta","template_file":"theta"},{"mixing_ratio_file":"qv","template_file":"qv"}]}}
+    return {"mesh":{"name":"x1.test","grid":str(mesh),"nvertlevels":2},"static":{"invariant":str(_invariant(mesh.parent))},"bflow":{"wind_transform":{"zonal_file_variable":"uReconstructZonal","meridional_file_variable":"uReconstructMeridional","template_file_variable":"theta"},"copy_variables":REQUIRED[1:],"derived_variables":[{"inputs":["pressure_p","pressure_base"],"template_file":"pressure_p"},{"theta_file":"theta","template_file":"theta"},{"mixing_ratio_file":"qv","template_file":"qv"}]}}
 
 def _canonical_mesh(tmp_path: Path) -> Path:
     path = tmp_path / "mesh.nc"
@@ -81,3 +90,22 @@ def test_rejects_state_with_wrong_case_vertical_level_count(tmp_path):
     config["mesh"]["nvertlevels"] = 3
     with pytest.raises(ManifestError, match="mesh.nvertlevels=3"):
         validate_manifest(manifest, config=config)
+
+
+def test_reports_vertical_grid_fingerprint(tmp_path):
+    report = validate_manifest(
+        _manifest(tmp_path),
+        config=_config(_canonical_mesh(tmp_path)),
+    )
+    vertical = report["scientific_contract"]["mesh_identity"]["vertical_identity"]
+    assert vertical["variable"] == "zgrid"
+    assert vertical["interface_count"] == 3
+    assert len(vertical["zgrid_sha256"]) == 64
+    assert report["scientific_contract"]["pairs"][0]["f048"]["vertical_grid_proof"] == "case-invariant-plus-level-count"
+
+
+def test_rejects_invariant_with_wrong_vertical_interface_count(tmp_path):
+    config = _config(_canonical_mesh(tmp_path))
+    config["mesh"]["nvertlevels"] = 3
+    with pytest.raises(ManifestError, match="zgrid has 3 interfaces"):
+        validate_manifest(_manifest(tmp_path), config=config)
