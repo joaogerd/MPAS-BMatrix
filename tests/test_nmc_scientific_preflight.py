@@ -54,7 +54,7 @@ def test_rejects_wrong_valid_time(tmp_path):
     with pytest.raises(ManifestError,match="xtime"): validate_manifest(_manifest(tmp_path,wrong_time=True),config=_config(_canonical_mesh(tmp_path)))
 
 def test_rejects_pair_mesh_mismatch(tmp_path):
-    with pytest.raises(ManifestError,match="incompatible MPAS grids"): validate_manifest(_manifest(tmp_path,mismatch=True),config=_config(_canonical_mesh(tmp_path)))
+    with pytest.raises(ManifestError,match="canonical mesh"): validate_manifest(_manifest(tmp_path,mismatch=True),config=_config(_canonical_mesh(tmp_path)))
 
 
 def test_rejects_same_size_but_different_mesh_geometry(tmp_path):
