@@ -37,7 +37,7 @@ def prepare(config, hdiag_workspace: str | Path, workspace: str | Path | None = 
             run_dir / "run_nicas.yaml",
             variable,
             date,
-            int(config["mesh"].get("nvertlevels", 55)),
+            int(config["mesh"]["nvertlevels"]),
         )
         write_nicas_pbs(config, run_dir, variable)
 
