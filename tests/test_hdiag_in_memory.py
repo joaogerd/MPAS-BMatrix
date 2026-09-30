@@ -95,7 +95,19 @@ def test_prepare_hdiag_consumes_vbal_workspace_directly(
     vbal = _vbal_workspace(tmp_path)
     output = tmp_path / "hdiag" / "case"
 
+    identity = {
+        "schema_version": 1,
+        "mesh_name": "x1.test",
+        "nvertlevels": 2,
+        "horizontal_geometry_sha256": "horizontal-test",
+        "vertical_geometry_sha256": "vertical-test",
+    }
+    manifest_path = vbal / "stage-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["metadata"]["scientific_identity"] = identity
+    manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(module, "validate_vbal", lambda _: True)
+    monkeypatch.setattr(module, "scientific_identity", lambda config: identity)
     monkeypatch.setattr(module, "write_hdiag_pbs", lambda config, run_dir: None)
 
     result = module.prepare(_config(tmp_path), vbal, workspace=output)
