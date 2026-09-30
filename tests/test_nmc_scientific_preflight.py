@@ -25,7 +25,7 @@ def _state(path: Path, valid_time: str, n_cells: int = 3, omit: str | None = Non
             ds.createVariable(name, "f4", dims)
 
 def _config(mesh: Path):
-    return {"mesh":{"name":"x1.test","grid":str(mesh)},"bflow":{"wind_transform":{"zonal_file_variable":"uReconstructZonal","meridional_file_variable":"uReconstructMeridional","template_file_variable":"theta"},"copy_variables":REQUIRED[1:],"derived_variables":[{"inputs":["pressure_p","pressure_base"],"template_file":"pressure_p"},{"theta_file":"theta","template_file":"theta"},{"mixing_ratio_file":"qv","template_file":"qv"}]}}
+    return {"mesh":{"name":"x1.test","grid":str(mesh),"nvertlevels":2},"bflow":{"wind_transform":{"zonal_file_variable":"uReconstructZonal","meridional_file_variable":"uReconstructMeridional","template_file_variable":"theta"},"copy_variables":REQUIRED[1:],"derived_variables":[{"inputs":["pressure_p","pressure_base"],"template_file":"pressure_p"},{"theta_file":"theta","template_file":"theta"},{"mixing_ratio_file":"qv","template_file":"qv"}]}}
 
 def _canonical_mesh(tmp_path: Path) -> Path:
     path = tmp_path / "mesh.nc"
@@ -73,3 +73,11 @@ def test_reports_canonical_mesh_fingerprint(tmp_path):
     assert identity["name"] == "x1.test"
     assert identity["nCells"] == 3
     assert len(identity["geometry_sha256"]) == 64
+
+
+def test_rejects_state_with_wrong_case_vertical_level_count(tmp_path):
+    manifest = _manifest(tmp_path)
+    config = _config(_canonical_mesh(tmp_path))
+    config["mesh"]["nvertlevels"] = 3
+    with pytest.raises(ManifestError, match="mesh.nvertlevels=3"):
+        validate_manifest(manifest, config=config)

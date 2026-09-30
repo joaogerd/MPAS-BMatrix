@@ -28,6 +28,11 @@ def prepare(config, hdiag_workspace: str | Path, workspace: str | Path | None = 
     symlink_force(require_file(hdiag_run / "mpas.stddev.nc"), out / "mpas.stddev.nc")
 
     variables = control_file_names(config)
+    raw_nvertlevels = config["mesh"].get("nvertlevels")
+    if not isinstance(raw_nvertlevels, int) or isinstance(raw_nvertlevels, bool) or raw_nvertlevels <= 0:
+        raise ValueError(
+            "mesh.nvertlevels must be an explicit positive integer before NICAS preparation."
+        )
     for variable in variables:
         run_dir = out / variable
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -37,7 +42,7 @@ def prepare(config, hdiag_workspace: str | Path, workspace: str | Path | None = 
             run_dir / "run_nicas.yaml",
             variable,
             date,
-            int(config["mesh"].get("nvertlevels", 55)),
+            raw_nvertlevels,
         )
         write_nicas_pbs(config, run_dir, variable)
 
