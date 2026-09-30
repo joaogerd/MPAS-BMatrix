@@ -259,3 +259,12 @@ Scientific preflight compares every state against the configured canonical `mesh
 #### Why dimensions are not a mesh identity
 
 Two MPAS meshes may have the same `nCells` and `nVertLevels` while assigning cells to different geographic coordinates. For that reason, dimensions remain structural checks only. The authoritative identity for a B-matrix case is the configured `mesh.grid`; forecast states must reproduce its cell-center geometry within a strict representation tolerance. `mpaswf` does not need to know this consumer-side scientific choice.
+
+
+### Vertical grid is case configuration, not a hard-coded constant
+
+`mesh.nvertlevels` declares the total model-level count for the selected case. The current x1.10242 JACI case declares 55 because that is the present configuration; **55 is not an ecosystem invariant**. A future MONAN configuration with 100+ levels must declare its own value and the same code path will validate it.
+
+Scientific preflight requires every f048/f024 state to expose `nVertLevels` equal to the case declaration. NICAS also consumes the explicit declaration when converting `dirac_level_from_top`; there is no implicit 55-level fallback.
+
+This count proves vertical-size compatibility, not full vertical-coordinate identity. Parameters such as `vbal.sampling.reduced levels` remain separate scientific choices: they may equal the full model level count for a given experiment, but they are not aliases for `mesh.nvertlevels` and must not be silently synchronized.
