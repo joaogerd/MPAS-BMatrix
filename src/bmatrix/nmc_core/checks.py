@@ -144,7 +144,7 @@ def _decode_xtime(variable: object) -> tuple[str, ...]:
     )
 
 
-def _mesh_contract(config: Mapping[str, object]) -> tuple[str, Path]:
+def _mesh_contract(config: Mapping[str, object]) -> tuple[str, Path, int]:
     """Return the declared mesh identity and canonical MPAS grid file."""
     mesh = config.get("mesh")
     if not isinstance(mesh, Mapping):
@@ -155,10 +155,13 @@ def _mesh_contract(config: Mapping[str, object]) -> tuple[str, Path]:
         raise ManifestError("mesh.name is required for NMC scientific preflight.")
     if not isinstance(grid, str) or not grid:
         raise ManifestError("mesh.grid is required for NMC scientific preflight.")
+    nvertlevels = mesh.get("nvertlevels")
+    if not isinstance(nvertlevels, int) or isinstance(nvertlevels, bool) or nvertlevels <= 0:
+        raise ManifestError("mesh.nvertlevels must be an explicit positive integer.")
     path = Path(grid).expanduser()
     if not path.is_file():
         raise ManifestError(f"Canonical MPAS mesh.grid does not exist: {path}")
-    return name, path
+    return name, path, nvertlevels
 
 
 def _mesh_geometry(path: Path) -> dict[str, object]:
@@ -254,7 +257,7 @@ def validate_scientific_pairs(
 ) -> dict[str, object]:
     """Validate NetCDF structure, valid time and pairwise mesh compatibility."""
     required = _required_bflow_input_variables(config)
-    mesh_name, mesh_path = _mesh_contract(config)
+    mesh_name, mesh_path, expected_nvertlevels = _mesh_contract(config)
     canonical_mesh = _mesh_geometry(mesh_path)
     records: list[dict[str, object]] = []
     reference_shape: tuple[int, int] | None = None
@@ -268,6 +271,12 @@ def validate_scientific_pairs(
         )
         shape48 = (int(f048["nCells"]), int(f048["nVertLevels"]))
         shape24 = (int(f024["nCells"]), int(f024["nVertLevels"]))
+        for label, shape in (("f048", shape48), ("f024", shape24)):
+            if shape[1] != expected_nvertlevels:
+                raise ManifestError(
+                    f"NMC {label} state at {pair.valid_time} has nVertLevels={shape[1]}, "
+                    f"but this case declares mesh.nvertlevels={expected_nvertlevels}."
+                )
         if shape48 != shape24:
             raise ManifestError(
                 f"NMC pair {pair.valid_time} uses incompatible MPAS grids: f048={shape48}, f024={shape24}."
@@ -288,6 +297,8 @@ def validate_scientific_pairs(
             "grid": str(mesh_path.resolve()),
             "geometry_sha256": canonical_mesh["sha256"],
             "nCells": canonical_mesh["nCells"],
+            "nVertLevels": expected_nvertlevels,
+            "vertical_identity": "case-declared-level-count",
         },
         "pairs": records,
     }
