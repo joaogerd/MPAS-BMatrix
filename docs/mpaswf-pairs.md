@@ -249,3 +249,13 @@ MPAS-BMatrix
 Do not add GFS download, WPS, `mpas_init_atmosphere`, or MPAS forecast
 integration logic to this repository unless the project boundary is intentionally
 redesigned.
+
+
+### Mesh identity
+
+Scientific preflight compares every state against the configured canonical `mesh.grid` using `latCell` and `lonCell`. Equal `nCells` is not sufficient. The report records `mesh.name` and a SHA-256 fingerprint of canonical cell geometry. The fingerprint hashes only the coordinate arrays, not the full forecast state, so atmospheric fields are not reread merely to identify the mesh.
+
+
+#### Why dimensions are not a mesh identity
+
+Two MPAS meshes may have the same `nCells` and `nVertLevels` while assigning cells to different geographic coordinates. For that reason, dimensions remain structural checks only. The authoritative identity for a B-matrix case is the configured `mesh.grid`; forecast states must reproduce its cell-center geometry within a strict representation tolerance. `mpaswf` does not need to know this consumer-side scientific choice.
