@@ -8,6 +8,7 @@ from bmatrix.artifacts import ArtifactError, StageManifest, require_scientific_i
 
 
 def _sources(tmp_path: Path, shift: float = 0.0):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     grid = tmp_path / "grid.nc"
     with netCDF4.Dataset(grid, "w") as ds:
         ds.createDimension("nCells", 2)
