@@ -487,12 +487,37 @@ test -s "$MANIFEST" || {
 }
 
 head "$MANIFEST"
-mpas-bmatrix check-manifest --manifest "$MANIFEST"
+python -m json.tool "${MANIFEST%.tsv}.json" >/dev/null
+mpas-bmatrix check-manifest --config "$CONFIG" --manifest "$MANIFEST"
 ```
 
 Do not continue if `check-manifest` fails. The B-matrix code requires at least
-four valid pairs for the maintained smoke workflow and verifies that referenced
-state files exist.
+four valid pairs for the maintained smoke workflow. With `--config`, this
+checkpoint also opens the states and verifies required atmospheric variables,
+valid times, cell counts and the case's vertical-grid contract before BFLOW.
+
+The native MPAS immutable `da_state` stream writes `mpasout` without `latCell`
+and `lonCell`. This is supported: geometry comes from the configured `mesh.grid`,
+and each state's `nCells` must match it. The report records
+`mesh.state_proof: case-grid-plus-cell-count` and
+`state_geometry_verified: false`; this is structural compatibility with the
+declared case, not independent proof of state geometry or cell ordering.
+Confirm that the campaign was produced with this case's mesh. When both
+coordinates are present, they are compared directly; incomplete or divergent
+coordinates are rejected. The canonical `mesh.grid` still requires coordinates
+and connectivity for ESMF weights.
+
+To recover an existing campaign after updating both repositories, regenerate
+only the manifest (TSV and JSON) and repeat this checkpoint:
+
+```bash
+mpaswf run --phase manifest --config "$MPASWF_CONFIG"
+```
+
+This validates and reuses the existing forecasts; it does not submit new MPAS
+jobs or add coordinates to state files. It also replaces the malformed JSON
+written by older mpaswf revisions. Historical TSV-only manifests remain accepted
+by BMatrix, but the JSON check above is required for newly generated campaigns.
 
 For more detail about the producer/consumer boundary, see
 [Generating NMC forecast pairs with mpaswf](mpaswf-pairs.md).

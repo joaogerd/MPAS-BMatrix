@@ -181,7 +181,13 @@ sidecar automatically when present and rejects a mismatched/stale pair.
 
 A historical TSV without the JSON sidecar remains accepted during migration;
 in that case the validation report sets `producer_contract_verified: false`.
-Newly generated campaigns should always carry both files.\n\n### Scientific preflight\n\nThe hand-off is not usable merely because the files exist. With the normal `--config`, `mpas-bmatrix check-manifest --config <config>` and manifest-driven BFLOW execution open every f048/f024 `da_state` before workspace creation or BFLOW/ESMF work. Plain `check-manifest` remains a lightweight producer-manifest check. They verify the BFLOW-required MPAS variables, `Time`/`nCells`/`nVertLevels`, `xtime` against manifest `valid_time`, pairwise grid compatibility, and campaign-wide grid consistency.\n\nThe required variables are derived from `bflow.wind_transform`, `bflow.copy_variables` and `bflow.derived_variables`. They are intentionally not duplicated in mpaswf; the MPAS-BMatrix scientific YAML remains the source of truth.
+Newly generated campaigns should always carry both files.
+
+### Scientific preflight
+
+The hand-off is not usable merely because the files exist. With the normal `--config`, `mpas-bmatrix check-manifest --config <config>` and manifest-driven BFLOW execution open every f048/f024 `da_state` before workspace creation or BFLOW/ESMF work. Plain `check-manifest` remains a lightweight producer-manifest check. They verify the BFLOW-required MPAS variables, `Time`/`nCells`/`nVertLevels`, `xtime` against manifest `valid_time`, pairwise grid compatibility, and campaign-wide grid consistency.
+
+The required variables are derived from `bflow.wind_transform`, `bflow.copy_variables` and `bflow.derived_variables`. They are intentionally not duplicated in mpaswf; the MPAS-BMatrix scientific YAML remains the source of truth.
 
 ## 4. Use the `mpaswf` manifest in this package
 
@@ -253,12 +259,30 @@ redesigned.
 
 ### Mesh identity
 
-Scientific preflight compares every state against the configured canonical `mesh.grid` using `latCell` and `lonCell`. Equal `nCells` is not sufficient. The report records `mesh.name` and a SHA-256 fingerprint of canonical cell geometry. The fingerprint hashes only the coordinate arrays, not the full forecast state, so atmospheric fields are not reread merely to identify the mesh.
+Scientific preflight reads the configured canonical `mesh.grid`, which must
+contain `latCell` and `lonCell`, and records its SHA-256 geometry fingerprint.
+Every state must have a matching `nCells`. When both coordinates are published
+in a state, they must match the canonical geometry and the state report records
+`state_proof: state-coordinates-match-case-grid` and
+`state_geometry_verified: true`. A state with only one coordinate is rejected.
+
+The pinned MPAS native immutable `da_state` stream does not publish either
+coordinate. Such states are supported and record
+`state_proof: case-grid-plus-cell-count` and `state_geometry_verified: false`.
+The fingerprint in their report belongs to the configured grid, not the state.
+The campaign-level `mesh_identity.state_geometry_verified` is true only when
+all f048/f024 states provide directly matching coordinates.
 
 
 #### Why dimensions are not a mesh identity
 
-Two MPAS meshes may have the same `nCells` and `nVertLevels` while assigning cells to different geographic coordinates. For that reason, dimensions remain structural checks only. The authoritative identity for a B-matrix case is the configured `mesh.grid`; forecast states must reproduce its cell-center geometry within a strict representation tolerance. `mpaswf` does not need to know this consumer-side scientific choice.
+Two MPAS meshes may have the same `nCells` and `nVertLevels` with different
+geometry or cell ordering. For states without coordinates, the report therefore
+proves only structural compatibility with the declared case. The operator must
+ensure that the campaign was generated with that case's mesh; changing
+`mesh.grid` after production is not proof of the state's origin. Checks of
+required fields, valid time and vertical levels still apply. This limited
+evidence is explicit, just as it is for states that omit `zgrid`.
 
 
 ### Vertical grid is case configuration, not a hard-coded constant

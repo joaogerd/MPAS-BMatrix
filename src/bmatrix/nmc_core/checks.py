@@ -190,12 +190,36 @@ def _validate_mesh_identity(
     mesh_name: str,
     canonical: Mapping[str, object],
 ) -> dict[str, object]:
-    """Prove that a da_state uses the configured canonical MPAS cell geometry."""
-    for name in ("latCell", "lonCell"):
-        if name not in dataset.variables:
-            raise ManifestError(
-                f"BFLOW input {state_path} cannot prove mesh identity {mesh_name!r}: missing {name}."
-            )
+    """Check compatibility, reporting whether state geometry is directly proven.
+
+    The pinned MPAS immutable da_state stream does not publish cell coordinates.
+    Such states can establish cell-count compatibility with the configured case,
+    but cannot independently prove geometry or cell ordering. Never present the
+    canonical grid fingerprint as a fingerprint measured from those states.
+    """
+    n_cells = len(dataset.dimensions["nCells"])
+    if n_cells != canonical["nCells"]:
+        raise ManifestError(
+            f"BFLOW input {state_path} does not match canonical mesh {mesh_name}: "
+            f"nCells={n_cells}; expected {canonical['nCells']}."
+        )
+    identity = {
+        "name": mesh_name,
+        "geometry_sha256": canonical["sha256"],
+        "nCells": n_cells,
+    }
+    present = [name for name in ("latCell", "lonCell") if name in dataset.variables]
+    if not present:
+        return {
+            **identity,
+            "state_proof": "case-grid-plus-cell-count",
+            "state_geometry_verified": False,
+        }
+    if len(present) != 2:
+        raise ManifestError(
+            f"BFLOW input {state_path} has incomplete horizontal coordinates: "
+            "latCell and lonCell must both be present or both absent."
+        )
     lat = np.asarray(dataset.variables["latCell"][:], dtype=np.float64).reshape(-1)
     lon = np.asarray(dataset.variables["lonCell"][:], dtype=np.float64).reshape(-1)
     ref_lat = canonical["lat"]
@@ -214,9 +238,9 @@ def _validate_mesh_identity(
             f"BFLOW input {state_path} does not match canonical MPAS mesh {mesh_name} latCell/lonCell."
         )
     return {
-        "name": mesh_name,
-        "geometry_sha256": canonical["sha256"],
-        "nCells": canonical["nCells"],
+        **identity,
+        "state_proof": "state-coordinates-match-case-grid",
+        "state_geometry_verified": True,
     }
 
 
@@ -350,6 +374,10 @@ def validate_scientific_pairs(
             "geometry_sha256": canonical_mesh["sha256"],
             "nCells": canonical_mesh["nCells"],
             "nVertLevels": expected_nvertlevels,
+            "state_geometry_verified": all(
+                record[lead]["mesh"]["state_geometry_verified"]
+                for record in records for lead in ("f048", "f024")
+            ),
             "vertical_identity": {
                 "source": vertical_grid["source"],
                 "variable": vertical_grid["variable"],
