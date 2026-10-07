@@ -9,16 +9,18 @@ from bmatrix.nmc_core.manifest import ManifestError
 
 REQUIRED = ["theta","uReconstructZonal","uReconstructMeridional","surface_pressure","qv","qc","qr","qi","qs","qg","pressure_p","pressure_base"]
 
-def _state(path: Path, valid_time: str, n_cells: int = 3, omit: str | None = None, shift_mesh: bool = False) -> None:
+def _state(path: Path, valid_time: str, n_cells: int = 3, omit: str | None = None, shift_mesh: bool = False, coordinates: tuple[str, ...] = ("latCell", "lonCell")) -> None:
     with netCDF4.Dataset(path, "w", format="NETCDF4") as ds:
         ds.createDimension("Time", 1); ds.createDimension("nCells", n_cells)
         ds.createDimension("nVertLevels", 2); ds.createDimension("StrLen", len(valid_time) + 2)
         xtime = ds.createVariable("xtime", "S1", ("Time", "StrLen"))
         xtime[:] = np.asarray([list(valid_time + "  ")], dtype="S1")
-        lat = ds.createVariable("latCell", "f8", ("nCells",))
-        lon = ds.createVariable("lonCell", "f8", ("nCells",))
-        lat[:] = np.linspace(-0.2, 0.2, n_cells) + (0.01 if shift_mesh else 0.0)
-        lon[:] = np.linspace(0.1, 0.5, n_cells)
+        if "latCell" in coordinates:
+            lat = ds.createVariable("latCell", "f8", ("nCells",))
+            lat[:] = np.linspace(-0.2, 0.2, n_cells) + (0.01 if shift_mesh else 0.0)
+        if "lonCell" in coordinates:
+            lon = ds.createVariable("lonCell", "f8", ("nCells",))
+            lon[:] = np.linspace(0.1, 0.5, n_cells)
         for name in REQUIRED:
             if name == omit: continue
             dims = ("Time","nCells") if name == "surface_pressure" else ("Time","nCells","nVertLevels")
@@ -41,14 +43,14 @@ def _canonical_mesh(tmp_path: Path) -> Path:
     _state(path, "2000-01-01_00:00:00")
     return path
 
-def _manifest(tmp_path: Path, omit=None, mismatch=False, wrong_time=False, shift_mesh=False):
+def _manifest(tmp_path: Path, omit=None, mismatch=False, wrong_time=False, shift_mesh=False, coordinates=("latCell", "lonCell")):
     path=tmp_path/"legacy.tsv"
     with path.open("w",newline="",encoding="utf-8") as stream:
         writer=csv.writer(stream,delimiter="\t"); writer.writerow(["valid_time","f048","f024"])
         for i in range(4):
             valid=f"2018-04-{i+1:02d}_00:00:00"; f48=tmp_path/f"f48-{i}.nc"; f24=tmp_path/f"f24-{i}.nc"
-            _state(f48,"1999-01-01_00:00:00" if wrong_time and i==0 else valid,omit=omit if i==0 else None,shift_mesh=shift_mesh and i==0)
-            _state(f24,valid,n_cells=4 if mismatch and i==0 else 3); writer.writerow([valid,f48,f24])
+            _state(f48,"1999-01-01_00:00:00" if wrong_time and i==0 else valid,omit=omit if i==0 else None,shift_mesh=shift_mesh and i==0,coordinates=coordinates)
+            _state(f24,valid,n_cells=4 if mismatch and i==0 else 3,coordinates=coordinates); writer.writerow([valid,f48,f24])
     return path
 
 def test_accepts_compatible_pairs(tmp_path):
@@ -109,3 +111,60 @@ def test_rejects_invariant_with_wrong_vertical_interface_count(tmp_path):
     config["mesh"]["nvertlevels"] = 3
     with pytest.raises(ManifestError, match="zgrid has 3 interfaces"):
         validate_manifest(_manifest(tmp_path), config=config)
+
+
+def test_accepts_native_da_state_without_coordinates_and_reports_limited_proof(tmp_path):
+    # The pinned MPAS immutable da_state publishes atmospheric fields, not mesh coordinates.
+    report = validate_manifest(
+        _manifest(tmp_path, coordinates=()),
+        config=_config(_canonical_mesh(tmp_path)),
+    )
+    for pair in report["scientific_contract"]["pairs"]:
+        for lead in ("f048", "f024"):
+            mesh = pair[lead]["mesh"]
+            assert mesh["state_proof"] == "case-grid-plus-cell-count"
+            assert mesh["state_geometry_verified"] is False
+            assert mesh["nCells"] == 3
+    assert report["scientific_contract"]["mesh_identity"]["state_geometry_verified"] is False
+
+
+def test_reports_direct_geometry_proof_when_coordinates_are_present(tmp_path):
+    report = validate_manifest(_manifest(tmp_path), config=_config(_canonical_mesh(tmp_path)))
+    mesh = report["scientific_contract"]["pairs"][0]["f048"]["mesh"]
+    assert mesh["state_proof"] == "state-coordinates-match-case-grid"
+    assert mesh["state_geometry_verified"] is True
+    assert report["scientific_contract"]["mesh_identity"]["state_geometry_verified"] is True
+
+
+def test_rejects_native_state_with_wrong_canonical_cell_count(tmp_path):
+    with pytest.raises(ManifestError, match="canonical mesh.*nCells"):
+        validate_manifest(
+            _manifest(tmp_path, coordinates=(), mismatch=True),
+            config=_config(_canonical_mesh(tmp_path)),
+        )
+
+
+@pytest.mark.parametrize("coordinates", [("latCell",), ("lonCell",)])
+def test_rejects_partial_state_coordinates(tmp_path, coordinates):
+    with pytest.raises(ManifestError, match="incomplete.*coordinates"):
+        validate_manifest(
+            _manifest(tmp_path, coordinates=coordinates),
+            config=_config(_canonical_mesh(tmp_path)),
+        )
+
+
+def test_canonical_grid_still_requires_coordinates_for_native_states(tmp_path):
+    mesh = tmp_path / "mesh.nc"
+    _state(mesh, "2000-01-01_00:00:00", coordinates=())
+    with pytest.raises(ManifestError, match="MPAS mesh identity source.*missing latCell"):
+        validate_manifest(_manifest(tmp_path, coordinates=()), config=_config(mesh))
+
+
+def test_mixed_campaign_does_not_claim_all_state_geometries_verified(tmp_path):
+    manifest = _manifest(tmp_path)
+    _state(tmp_path / "f48-0.nc", "2018-04-01_00:00:00", coordinates=())
+    report = validate_manifest(manifest, config=_config(_canonical_mesh(tmp_path)))
+    contract = report["scientific_contract"]
+    assert contract["mesh_identity"]["state_geometry_verified"] is False
+    assert contract["pairs"][0]["f048"]["mesh"]["state_geometry_verified"] is False
+    assert contract["pairs"][0]["f024"]["mesh"]["state_geometry_verified"] is True
