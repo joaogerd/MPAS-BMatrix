@@ -56,8 +56,8 @@ def _vbal_workspace(tmp_path: Path) -> Path:
 
     for name in [
         "bg.nc",
-        "namelist.atmosphere_240km",
-        "streams.atmosphere_240km",
+        "namelist.atmosphere",
+        "streams.atmosphere",
         "templateFields.240km.nc",
         "mpas_vbal.nc",
         "mpas_sampling.nc",
@@ -130,3 +130,4 @@ def test_prepare_hdiag_consumes_vbal_workspace_directly(
     assert manifest["stage"] == "hdiag"
     assert manifest["inputs"] == {"vbal_workspace": str(vbal.resolve())}
     assert manifest["metadata"]["members"] == 4
+

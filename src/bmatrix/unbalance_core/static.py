@@ -12,7 +12,7 @@ def link_unbalance_inputs(vbal_root: Path, workspace: Path, run_dir: Path) -> No
     (workspace / "samplesUnbalanced").mkdir(parents=True, exist_ok=True)
     symlink_force(vbal_run, workspace / "vbal")
 
-    required = ["bg.nc", "namelist.atmosphere_240km", "streams.atmosphere_240km"]
+    required = ["bg.nc", "namelist.atmosphere", "streams.atmosphere"]
     template_fields = sorted(vbal_run.glob("templateFields.*.nc"))
     if len(template_fields) != 1:
         raise RuntimeError("Esperado exatamente um templateFields.*.nc no workspace VBAL.")
@@ -37,4 +37,5 @@ def link_unbalance_inputs(vbal_root: Path, workspace: Path, run_dir: Path) -> No
         for source in vbal_run.glob(pattern):
             if source.name not in required:
                 symlink_force(source, run_dir / source.name)
+
 

@@ -109,8 +109,8 @@ def write_dirac_yaml(
     aliases = control_aliases(config)
     data: dict[str, object] = {
         "geometry": {
-            "nml_file": "./namelist.atmosphere_240km",
-            "streams_file": "./streams.atmosphere_240km",
+            "nml_file": "./namelist.atmosphere",
+            "streams_file": "./streams.atmosphere",
             "deallocate non-da fields": True,
             "alias": aliases,
         },
@@ -212,3 +212,4 @@ def write_dirac_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
         ),
     )
     write_text(directory / "qsub_dirac.bash", render_pbs(spec))
+

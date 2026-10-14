@@ -45,8 +45,8 @@ def write_nicas_yaml(
     level = 1 if variable == "surface_pressure" else max(1, nvertlevels - level_from_top + 1)
     data = {
         "geometry": {
-            "nml_file": "./namelist.atmosphere_240km",
-            "streams_file": "./streams.atmosphere_240km",
+            "nml_file": "./namelist.atmosphere",
+            "streams_file": "./streams.atmosphere",
             "deallocate non-da fields": True,
             "bump vunit": str(nicas.get("bump_vunit", "avgheight")),
         },
@@ -157,3 +157,4 @@ def write_nicas_merge_files(config: Mapping[str, Any], workspace: str | Path) ->
     # The merge runs local shell tasks; allocation remains explicit but no MPI launcher is used.
     spec = replace(spec, resources=replace(spec.resources, mpi_ranks=1))
     write_text(merge_dir / "qsub_nicas_merge.bash", render_pbs(spec))
+

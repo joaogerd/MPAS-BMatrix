@@ -252,7 +252,7 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
         else:
             checks.append(_file(f"static.{key}", _path(value)))
 
-    physics_value = static.get("tutorial_physics_files")
+    physics_value = static.get("support_dir", static.get("tutorial_physics_files"))
     if not physics_value:
         checks.append(_missing("static.tutorial_physics_files", "directory"))
     else:
@@ -263,6 +263,10 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
             )
         )
 
+    for key in ("namelist", "streams"):
+        if static.get(key):
+            checks.append(_file(f"static.{key}", _path(static[key])))
+
     return checks
 
 
@@ -272,3 +276,4 @@ def preflight_payload(config: Mapping[str, object]) -> dict[str, object]:
         "valid": all(item.ok for item in checks),
         "checks": [item.as_dict() for item in checks],
     }
+

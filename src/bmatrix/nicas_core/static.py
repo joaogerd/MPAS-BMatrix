@@ -6,7 +6,7 @@ from ..shell import require_file, symlink_force
 
 
 def link_nicas_support(hdiag_run: Path, run_dir: Path) -> None:
-    required = ["bg.nc", "namelist.atmosphere_240km", "streams.atmosphere_240km"]
+    required = ["bg.nc", "namelist.atmosphere", "streams.atmosphere"]
     for name in required:
         symlink_force(require_file(hdiag_run / name, name), run_dir / name)
 
@@ -22,3 +22,4 @@ def link_nicas_support(hdiag_run: Path, run_dir: Path) -> None:
     ]:
         for source in hdiag_run.glob(pattern):
             symlink_force(source, run_dir / source.name)
+

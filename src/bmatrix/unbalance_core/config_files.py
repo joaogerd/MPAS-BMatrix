@@ -36,8 +36,8 @@ def write_unbalance_yaml(config: Mapping[str, Any], path: str | Path, nmembers: 
     stem = bflow_sample_stem(config)
     data: dict[str, object] = {
         "geometry": {
-            "nml_file": "./namelist.atmosphere_240km",
-            "streams_file": "./streams.atmosphere_240km",
+            "nml_file": "./namelist.atmosphere",
+            "streams_file": "./streams.atmosphere",
         },
         "background": {
             "state variables": variables,
@@ -102,3 +102,4 @@ def write_unbalance_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
         ),
     )
     write_text(directory / "qsub_unbalance.bash", render_pbs(spec))
+
