@@ -847,7 +847,6 @@ def _coordinate_candidates(products: BMatrixProducts) -> list[Path]:
     for root in roots:
         candidates.extend(
             [
-                root / "x1.10242.invariant.nc",
                 root / "bg.nc",
                 root / "bg_so.nc",
                 root / "mpas.dirac.nc",
@@ -1291,3 +1290,4 @@ def _format_number(value: float) -> str:
 
 def _safe_name(value: str) -> str:
     return "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in value)
+

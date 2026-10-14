@@ -131,7 +131,7 @@ def write_so_yaml(
             "minimizer": {"algorithm": str(single.get("minimizer", "DRPCG"))},
             "iterations": [
                 {
-                    "geometry": {"nml_file": "./namelist.atmosphere_240km", "streams_file": "./streams.atmosphere_240km"},
+                    "geometry": {"nml_file": "./namelist.atmosphere", "streams_file": "./streams.atmosphere"},
                     "gradient norm reduction": float(single.get("gradient_norm_reduction", 1e-3)),
                     "diagnostics": {"departures": "ombg"},
                     "ninner": int(single.get("ninner", 10)),
@@ -144,8 +144,8 @@ def write_so_yaml(
             "time window": {"begin": window_begin, "length": f"PT{window_hours}H"},
             "jb evaluation": False,
             "geometry": {
-                "nml_file": "./namelist.atmosphere_240km",
-                "streams_file": "./streams.atmosphere_240km",
+                "nml_file": "./namelist.atmosphere",
+                "streams_file": "./streams.atmosphere",
                 "deallocate non-da fields": True,
                 "alias": aliases,
             },
@@ -218,3 +218,4 @@ def write_so_pbs(config: Mapping[str, Any], run_dir: str | Path, variant: str = 
 def write_so_t_only_diagnostic_pbs(config: Mapping[str, Any], run_dir: Path) -> None:
     """Create a lightweight marker for the intentionally optional t-only debug run."""
     write_text(run_dir / "qsub_so_t_only_debug.bash", "#!/usr/bin/env bash\necho 'SO t-only debug placeholder'\n")
+

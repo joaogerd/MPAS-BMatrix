@@ -648,7 +648,7 @@ def test_so_and_dirac_renderers_do_not_render_stream_lists(tmp_path: Path) -> No
 
 def _hdiag_static_files(path: Path, stream_text: str) -> None:
     path.mkdir(parents=True)
-    for name in ["bg.nc", "namelist.atmosphere_240km", "streams.atmosphere_240km", "templateFields.240km.nc"]:
+    for name in ["bg.nc", "namelist.atmosphere", "streams.atmosphere", "templateFields.240km.nc"]:
         (path / name).write_text(name)
     (path / "stream_list.atmosphere.analysis").write_text(stream_text)
 
@@ -741,7 +741,7 @@ def _dirac_prepare_workspaces(tmp_path: Path) -> tuple[Path, Path, Path]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("product")
     hdiag_run = hdiag / "HDIAG"
-    for name in ["bg.nc", "namelist.atmosphere_240km", "streams.atmosphere_240km"]:
+    for name in ["bg.nc", "namelist.atmosphere", "streams.atmosphere"]:
         (hdiag_run / name).write_text(name)
     (hdiag_run / "run_hdiag.yaml").write_text("date: 2026-06-22T00:00:00Z\n")
     (hdiag_run / "stream_list.atmosphere.analysis").write_text("compatible_registry_field\n")
@@ -934,7 +934,7 @@ def test_so_validation_fails_on_qv_stream_parser_error(tmp_path: Path) -> None:
     _valid_so_outputs(tmp_path)
     (tmp_path / "stderr.log").write_text(
         "ERROR: Requested field qv not available\n"
-        "CRITICAL ERROR: xml stream parser failed: ./streams.atmosphere_240km\n"
+        "CRITICAL ERROR: xml stream parser failed: ./streams.atmosphere\n"
     )
 
     errors = so_errors(tmp_path)
@@ -1000,3 +1000,4 @@ def test_create_so_background_derives_moist_air_specific_humidity_from_qv(tmp_pa
             dataset.variables["water_vapor_mixing_ratio_wrt_moist_air"][:],
             qv / (1.0 + qv),
         )
+

@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Mapping
 
+from xml.etree import ElementTree as ET
+
 from ..scientific_config import bflow_sample_stem, control_file_names
 from ..shell import require_file, symlink_force, write_text
 from .model import TIME_FORMAT, Sample
@@ -44,35 +46,56 @@ def link_static_files(
     static = config["static"]
     if not isinstance(mesh, Mapping) or not isinstance(static, Mapping):
         raise ValueError("mesh e static devem ser blocos YAML.")
-    tutorial = Path(str(static["tutorial_physics_files"]))
+    support = static.get("support_dir", static.get("tutorial_physics_files"))
+    if support is None:
+        raise ValueError("Declare static.support_dir for MPAS stream lists and support files.")
+    tutorial = Path(str(support))
 
     symlink_force(mesh["graph"], run_dir / Path(str(mesh["graph"])).name)
     partition = Path(str(mesh["partitions_dir"])) / f"{Path(str(mesh['graph'])).name}.part.{int(mesh['nproc'])}"
-    if partition.exists():
-        symlink_force(partition, run_dir / partition.name)
+    symlink_force(require_file(partition, "mesh partition"), run_dir / partition.name)
 
     symlink_force(static["invariant"], run_dir / f"{mesh['name']}.invariant.nc")
     symlink_force(bg_file, run_dir / "bg.nc")
     mesh_id = str(mesh["name"]).removeprefix("x1.")
     symlink_force(template_fields, run_dir / f"templateFields.{mesh_id}.nc")
 
-    namelist = tutorial / "namelist.atmosphere_240km"
-    if namelist.exists():
-        text = namelist.read_text()
-        start_time = datetime.strptime(valid_time, TIME_FORMAT).strftime("%Y-%m-%d_%H:%M:%S")
-        text, replacements = re.subn(
-            r"(?m)^(\s*config_start_time\s*=\s*)'[^']+'",
-            rf"\1'{start_time}'",
-            text,
-            count=1,
-        )
-        if replacements != 1:
-            raise RuntimeError(f"config_start_time não encontrado em {namelist}")
-        write_text(run_dir / namelist.name, text)
+    def source_path(key: str, name: str) -> Path:
+        if key in static:
+            return require_file(static[key], f"static.{key}")
+        neutral = tutorial / name
+        if neutral.is_file():
+            return neutral
+        if str(mesh['name']) != "x1.10242":
+            raise ValueError(f"Declare static.{key} for this mesh; tutorial 240-km fallback is disabled.")
+        # Backward-compatible input names; never used as downstream aliases.
+        return require_file(tutorial / f"{name}_240km", f"static.{key}")
 
-    streams = tutorial / "streams.atmosphere_240km"
-    if streams.exists():
-        symlink_force(streams, run_dir / streams.name)
+    namelist = source_path("namelist", "namelist.atmosphere")
+    text = namelist.read_text()
+    start_time = datetime.strptime(valid_time, TIME_FORMAT).strftime("%Y-%m-%d_%H:%M:%S")
+    text, replacements = re.subn(
+        r"(?m)^(\s*config_start_time\s*=\s*)'[^']+'",
+        rf"\g<1>'{start_time}'", text, count=1,
+    )
+    if replacements != 1:
+        raise RuntimeError(f"config_start_time não encontrado em {namelist}")
+    text = re.sub(r"(?m)^(\s*config_block_decomp_file_prefix\s*=\s*)'[^']*'",
+                  rf"\g<1>'{Path(str(mesh['graph'])).name}.part.'", text)
+    destination = run_dir / "namelist.atmosphere"
+    if destination.is_symlink():
+        destination.unlink()
+    write_text(destination, text)
+
+    streams = source_path("streams", "streams.atmosphere")
+    tree = ET.parse(streams)
+    for stream in tree.getroot():
+        if stream.get("name") == "invariant":
+            stream.set("filename_template", f"{mesh['name']}.invariant.nc")
+    destination = run_dir / "streams.atmosphere"
+    if destination.is_symlink():
+        destination.unlink()
+    tree.write(destination, encoding="unicode")
 
     install = config.get("install", {})
     physics_dir = Path(str(install.get("atmosphere_share", tutorial))) if isinstance(install, Mapping) else tutorial
@@ -89,3 +112,4 @@ def link_static_files(
         if source.name != "stream_list.atmosphere.control":
             symlink_force(source, run_dir / source.name)
     write_stream_list_control(config, run_dir / "stream_list.atmosphere.control")
+

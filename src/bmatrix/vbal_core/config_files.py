@@ -49,7 +49,7 @@ def write_vbal_yaml(config: Mapping[str, Any], path: str | Path, nmembers: int, 
     variables = list(ordered_control_file_names(config, vbal.get("group_variable_order")))
     stem = bflow_sample_stem(config)
     data: dict[str, object] = {
-        "geometry": {"nml_file": "./namelist.atmosphere_240km", "streams_file": "./streams.atmosphere_240km"},
+        "geometry": {"nml_file": "./namelist.atmosphere", "streams_file": "./streams.atmosphere"},
         "background": {
             "state variables": variables,
             "filename": "./bg.nc",
@@ -110,3 +110,4 @@ def write_vbal_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
         command=mpi_command(config, ranks, str(toolbox_exe(config)), "./run_vbal.yaml", "./run_vbal.runlog"),
     )
     write_text(directory / "qsub_vbal.bash", render_pbs(spec))
+

@@ -78,8 +78,8 @@ def write_hdiag_yaml(config: Mapping[str, Any], path: str | Path, nmembers: int,
         raise ValueError("hdiag.variance deve ser um bloco YAML.")
     data: dict[str, object] = {
         "geometry": {
-            "nml_file": "./namelist.atmosphere_240km",
-            "streams_file": "./streams.atmosphere_240km",
+            "nml_file": "./namelist.atmosphere",
+            "streams_file": "./streams.atmosphere",
             "bump vunit": str(hdiag.get("bump_vunit", "avgheight")),
         },
         "background": {
@@ -155,3 +155,4 @@ def write_hdiag_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
         command=mpi_command(config, ranks, str(toolbox_exe(config)), "./run_hdiag.yaml", "./run_hdiag.runlog"),
     )
     write_text(directory / "qsub_hdiag.bash", render_pbs(spec))
+
