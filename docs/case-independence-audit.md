@@ -26,7 +26,7 @@ or reuse another mesh's saved products.
 | Diagnostics | Main and A/B CLIs assumed x1.10242, plots implicitly chose level index 30 | Diagnostic entrypoints require `--config`; plot default derives from half of the configured number of vertical levels. |
 | Workspace isolation | Date range + rank count alone produced identical paths for different meshes | Workspace identifier now includes `mesh.name` or `project.case_id`, propagated downstream. Use separate work roots / case IDs for distinct physical configurations. |
 | Scientific-stage parameters | Reduced levels, NICAS coarsening, H/V scales, wind transforms, synthetic observations were embedded in the x1.10242 stage YAML | The **complete original scientific contract** is copied, unchanged, under `testcase/tutorial-240km/stages/`. New cases must review and edit those values; arbitrary physical defaults are not inferred. |
-| Legacy PBS scripts | The repository contains three hard-coded MPAS smoke/init/forecast templates under `templates/pbs/` | These are historical diagnostic templates, **not** used by the BMatrix production pipeline. They remain only for historical compatibility; production forecasts are exclusively MPASWF's responsibility. |
+| Legacy PBS scripts | The repository contains three hard-coded MPAS smoke/init/forecast templates under `templates/pbs/` | They were archived verbatim under `testcase/tutorial-240km/legacy-pbs/` and removed from generic `templates/`. They are not BMatrix production entrypoints; production forecasts are exclusively MPASWF's responsibility. |
 
 ## Standalone 240-km scientific testcase
 
