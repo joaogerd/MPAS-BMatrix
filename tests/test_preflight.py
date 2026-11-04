@@ -246,3 +246,29 @@ def test_preflight_catches_copied_vertical_settings_from_other_mesh(tmp_path: Pa
     assert checks["vbal.sampling.reduced levels"]["status"] == "INVALID"
     assert checks["nicas.dirac_level_from_top"]["status"] == "INVALID"
     assert "mesh.nvertlevels" in checks["vbal.sampling.reduced levels"]["detail"]
+
+
+def test_preflight_reports_stream_lists_from_selected_xml(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    static = config["static"]
+    streams = Path(static["streams"])
+    streams.write_text(
+        '<streams><stream name="analysis">'
+        '<file name="stream_list.atmosphere.background" />'
+        '</stream></streams>'
+    )
+    report = preflight_payload(config)
+    checks = {item["name"]: item for item in report["checks"]}
+    assert report["valid"] is False
+    assert checks["static.stream_lists[0]"]["status"] == "MISSING"
+    assert checks["static.stream_lists[0]"]["path"].endswith("stream_list.atmosphere.background")
+    (Path(static["support_dir"]) / "stream_list.atmosphere.background").touch()
+    assert preflight_payload(config)["valid"] is True
+
+
+def test_preflight_reports_invalid_case_streams_xml(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    Path(config["static"]["streams"]).write_text("<streams>")
+    checks = {item["name"]: item for item in preflight_payload(config)["checks"]}
+    assert checks["static.streams"]["status"] == "INVALID"
+    assert "XML" in checks["static.streams"]["detail"]
