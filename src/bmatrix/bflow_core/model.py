@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+import re
 from typing import Iterator, Mapping
 
 from ..errors import ConfigurationError
@@ -96,11 +97,18 @@ def default_workspace(config: Mapping[str, object], start_valid_time: str, end_v
         raise ConfigurationError("Declare mesh.nproc as a positive integer in the case YAML.") from exc
     if nproc < 1:
         raise ConfigurationError("mesh.nproc must be positive.")
+    # Include the mesh (or an explicit case id) so different experiments with
+    # the same MPI count and time window cannot silently reuse one workspace.
+    case_id = project.get("case_id") or mesh.get("name")
+    if not isinstance(case_id, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", case_id):
+        raise ConfigurationError(
+            "Set mesh.name or project.case_id to a non-empty filename-safe case identifier."
+        )
     return (
         Path(str(project["work_root"]))
         / "bmatrix"
         / "bflow_preprocessing"
-        / f"np{nproc}_{compact_time(start_valid_time)}_{compact_time(end_valid_time)}"
+        / f"np{nproc}_{compact_time(start_valid_time)}_{compact_time(end_valid_time)}_case-{case_id}"
     )
 
 
