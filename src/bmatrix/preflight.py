@@ -245,6 +245,41 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
                     )
                     checks.append(_file("mesh.partition", partition))
 
+    levels = mesh.get("nvertlevels")
+    if isinstance(levels, bool) or not isinstance(levels, int) or levels <= 0:
+        checks.append(ResourceCheck(
+            "mesh.nvertlevels", str(levels) if levels is not None else "<unset>",
+            "positive integer", "NOT_CONFIGURED" if levels is None else "INVALID",
+            False, "Set mesh.nvertlevels to the number of vertical levels in "
+            "the selected MPAS initial/invariant states."
+        ))
+    else:
+        checks.append(ResourceCheck(
+            "mesh.nvertlevels", str(levels), "positive integer", "OK", True
+        ))
+        level_fields = (
+            ("vbal.sampling.reduced levels", "vbal", "sampling", "reduced levels"),
+            ("hdiag.sampling.reduced levels", "hdiag", "sampling", "reduced levels"),
+            ("nicas.dirac_level_from_top", "nicas", None, "dirac_level_from_top"),
+        )
+        for field, stage, subkey, leaf in level_fields:
+            section = _mapping(config, stage)
+            values = section.get(subkey) if subkey else section
+            if not isinstance(values, Mapping) or leaf not in values:
+                continue
+            candidate = values[leaf]
+            if isinstance(candidate, bool) or not isinstance(candidate, int) or not (1 <= candidate <= levels):
+                checks.append(ResourceCheck(
+                    field, str(candidate), f"integer in [1, {levels}]", "INVALID",
+                    False,
+                    f"Set {field} to a positive integer <= mesh.nvertlevels "
+                    f"({levels}); review the scientific sampling for this mesh."
+                ))
+            else:
+                checks.append(ResourceCheck(
+                    field, str(candidate), "vertical level selection", "OK", True
+                ))
+
     static = _mapping(config, "static")
     for key in ("invariant", "geovars", "keptvars"):
         value = static.get(key)
