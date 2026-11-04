@@ -43,6 +43,9 @@ jobs:
             bash -n "$script"
           done
 
+      - name: Check testcase runner syntax
+        run: bash -n testcase/tutorial-240km/run.sh
+
       - name: Run tests
         run: python -m pytest -p no:cacheprovider -q
 
