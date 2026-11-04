@@ -15,6 +15,9 @@ no case implicitly. This testcase is selected only by passing its
   UNBALANCE (optional historical A/B), HDIAG, NICAS, SO and DIRAC.
   Their scientific numbers, variables, and formulas were copied unchanged.
 - `run.sh`: checks the selected configuration or consumes MPASWF products.
+- `legacy-pbs/`: unmodified original tutorial-only PBS smoke/init/forecast
+  diagnostic scripts. They are archived for provenance; do **not** treat their
+  fixed mesh/rank values as generic templates or use them instead of MPASWF.
 
 ## Reproduce the NMC tutorial
 
