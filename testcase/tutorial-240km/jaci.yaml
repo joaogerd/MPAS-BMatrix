@@ -31,6 +31,10 @@ static:
   namelist: /p/projetos/monan_das/$USER/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files/namelist.atmosphere_240km
   streams: /p/projetos/monan_das/$USER/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files/streams.atmosphere_240km
   support_dir: /p/projetos/monan_das/$USER/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files
+  stream_lists:
+    - stream_list.atmosphere.analysis
+    - stream_list.atmosphere.background
+    - stream_list.atmosphere.ensemble
 
   # Public runtime support installed by MONAN-JEDI.
   geovars: ${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/mpas-jedi/namelists/geovars.yaml
