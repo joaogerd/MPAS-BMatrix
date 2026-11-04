@@ -95,6 +95,7 @@ def _config(tmp_path: Path) -> dict[str, object]:
             "graph": str(graph),
             "partitions_dir": str(partitions),
             "nproc": 4,
+            "nvertlevels": 55,
         },
         "static": {
             "invariant": str(invariant),
@@ -233,3 +234,15 @@ def test_generic_preflight_reports_missing_actual_yaml_fields(tmp_path: Path) ->
     for field in ("static.namelist", "static.streams"):
         assert checks[field]["status"] == "NOT_CONFIGURED"
         assert field in checks[field]["detail"]
+
+
+def test_preflight_catches_copied_vertical_settings_from_other_mesh(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    config["mesh"]["nvertlevels"] = 10
+    config["vbal"] = {"sampling": {"reduced levels": 55}}
+    config["nicas"] = {"dirac_level_from_top": 20}
+    report = preflight_payload(config)
+    checks = {item["name"]: item for item in report["checks"]}
+    assert checks["vbal.sampling.reduced levels"]["status"] == "INVALID"
+    assert checks["nicas.dirac_level_from_top"]["status"] == "INVALID"
+    assert "mesh.nvertlevels" in checks["vbal.sampling.reduced levels"]["detail"]
