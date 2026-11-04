@@ -32,7 +32,11 @@ def fmt_file_time(dt: datetime) -> str:
 
 def forecast_run_dir(config, init_time: str, lead_hours: int, dt: int) -> Path:
     mesh = config["mesh"]["name"]
-    nproc = int(config["mesh"].get("nproc", 64))
+    if "nproc" not in config["mesh"]:
+        raise ValueError("Declare mesh.nproc in the case YAML (MPI rank count).")
+    nproc = int(config["mesh"]["nproc"])
+    if nproc < 1:
+        raise ValueError("mesh.nproc must be positive.")
     return (
         Path(config["project"]["work_root"])
         / "runs"

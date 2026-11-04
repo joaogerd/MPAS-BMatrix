@@ -10,6 +10,21 @@ The public command is:
 mpas-bmatrix
 ```
 
+## Choose a campaign explicitly
+
+The program does **not** choose the old 240-km tutorial automatically:
+every operational command needs `--config` with a selected case YAML.
+
+The original fully composed B-matrix calibration lives under
+[**testcase/tutorial-240km**](testcase/tutorial-240km/README.md), including
+its eight scientific stage fragments and a manifest-driven runner. Copy
+that directory to create an experiment at another resolution or period.
+The matching MPAS forecasts are prepared with the corresponding
+[MPASWF testcase](https://github.com/joaogerd/mpaswf/tree/main/testcase/tutorial-240km).
+
+See the [case-independence audit](docs/case-independence-audit.md) for residual
+intentional NMC constraints, backward-compatibility allowances and CI scope.
+
 ## Scope
 
 The repository starts at the **BFLOW** boundary. Forecast production is owned by

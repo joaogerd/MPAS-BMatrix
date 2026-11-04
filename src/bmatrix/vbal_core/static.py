@@ -47,9 +47,13 @@ def link_static_files(
     if not isinstance(mesh, Mapping) or not isinstance(static, Mapping):
         raise ValueError("mesh e static devem ser blocos YAML.")
     support = static.get("support_dir", static.get("tutorial_physics_files"))
-    if support is None:
-        raise ValueError("Declare static.support_dir for MPAS stream lists and support files.")
-    tutorial = Path(str(support))
+    support_dir = Path(str(support)) if support else None
+    legacy_case = (
+        str(mesh["name"]) == "x1.10242"
+        and bool(static.get("tutorial_physics_files"))
+        and not static.get("namelist")
+        and not static.get("streams")
+    )
 
     symlink_force(mesh["graph"], run_dir / Path(str(mesh["graph"])).name)
     partition = Path(str(mesh["partitions_dir"])) / f"{Path(str(mesh['graph'])).name}.part.{int(mesh['nproc'])}"
@@ -61,15 +65,18 @@ def link_static_files(
     symlink_force(template_fields, run_dir / f"templateFields.{mesh_id}.nc")
 
     def source_path(key: str, name: str) -> Path:
-        if key in static:
+        if static.get(key):
             return require_file(static[key], f"static.{key}")
-        neutral = tutorial / name
-        if neutral.is_file():
-            return neutral
-        if str(mesh['name']) != "x1.10242":
-            raise ValueError(f"Declare static.{key} for this mesh; tutorial 240-km fallback is disabled.")
-        # Backward-compatible input names; never used as downstream aliases.
-        return require_file(tutorial / f"{name}_240km", f"static.{key}")
+        if support_dir is not None:
+            neutral = support_dir / name
+            if neutral.is_file():
+                return neutral
+        if legacy_case and support_dir is not None:
+            return require_file(support_dir / f"{name}_240km", f"static.{key}")
+        raise ValueError(
+            f"Missing static.{key} for mesh {mesh['name']}. "
+            f"Set static.{key} to an existing MPAS {name} file in the case YAML."
+        )
 
     namelist = source_path("namelist", "namelist.atmosphere")
     text = namelist.read_text()
@@ -98,18 +105,52 @@ def link_static_files(
     tree.write(destination, encoding="unicode")
 
     install = config.get("install", {})
-    physics_dir = Path(str(install.get("atmosphere_share", tutorial))) if isinstance(install, Mapping) else tutorial
-    for source in physics_dir.iterdir():
-        if source.is_file() and source.name[:1].isupper():
-            symlink_force(source, run_dir / source.name)
+    physics_value = install.get("atmosphere_share") if isinstance(install, Mapping) else None
+    if not physics_value and isinstance(install, Mapping) and install.get("root"):
+        physics_value = str(Path(str(install["root"])) / "share/MPAS/core_atmosphere")
+    physics_dir = Path(str(physics_value)) if physics_value else support_dir
+    if physics_dir is not None:
+        if not physics_dir.is_dir():
+            raise FileNotFoundError(
+                f"MPAS physics directory does not exist: {physics_dir}. "
+                "Check install.atmosphere_share."
+            )
+        for source in physics_dir.iterdir():
+            if source.is_file() and source.name[:1].isupper():
+                symlink_force(source, run_dir / source.name)
 
-    for key in ["geovars", "keptvars"]:
+    for key in ("geovars", "keptvars"):
         if key in static:
             source = require_file(static[key], key)
             symlink_force(source, run_dir / source.name)
 
-    for source in tutorial.glob("stream_list.atmosphere.*"):
-        if source.name != "stream_list.atmosphere.control":
-            symlink_force(source, run_dir / source.name)
+    # Stage exactly the stream lists needed by the selected scientific case.
+    # Legacy tutorials keep their original directory-wide staging behavior.
+    explicit_lists = static.get("stream_lists")
+    if explicit_lists is not None:
+        if not isinstance(explicit_lists, list) or not all(
+            isinstance(name, str) and name.startswith("stream_list.atmosphere.")
+            and Path(name).name == name for name in explicit_lists
+        ):
+            raise ValueError("static.stream_lists must be a list of MPAS stream-list filenames.")
+        list_names = explicit_lists
+    elif legacy_case and support_dir is not None:
+        list_names = [source.name for source in support_dir.glob("stream_list.atmosphere.*")]
+    else:
+        list_names = [
+            element.get("name")
+            for element in tree.getroot().iter()
+            if element.tag.rsplit("}", 1)[-1] == "file"
+            and (element.get("name") or "").startswith("stream_list.atmosphere.")
+        ]
+    for name in dict.fromkeys(list_names):
+        if name == "stream_list.atmosphere.control":
+            continue  # Generated from the declared scientific controls.
+        if support_dir is None:
+            raise ValueError(
+                f"Case streams require {name}, but static.support_dir is missing."
+            )
+        source = require_file(support_dir / name, f"MPAS stream list {name}")
+        symlink_force(source, run_dir / name)
     write_stream_list_control(config, run_dir / "stream_list.atmosphere.control")
 

@@ -180,7 +180,7 @@ def submit_compare_job(workspace: str | Path, *, poll_seconds: int = 30) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run complete downstream A/B comparison as a one-CPU PBS job.")
-    parser.add_argument("--config", default="configs/jaci-x1.10242.yaml")
+    parser.add_argument("--config", required=True, help="YAML do experimento.")
     parser.add_argument("--vbal-workspace", type=Path, required=True)
     parser.add_argument("--root", type=Path)
     parser.add_argument("--poll-seconds", type=int, default=30)

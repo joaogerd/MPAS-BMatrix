@@ -11,7 +11,6 @@ from ..scientific_config import bflow_product
 from ..shell import require_file
 
 
-DEFAULT_CONFIG = "configs/bmatrix-x1.10242.yaml"
 TIME_FORMAT = "%Y-%m-%d_%H:%M:%S"
 
 

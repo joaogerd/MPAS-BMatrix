@@ -71,6 +71,10 @@ def _config(tmp_path: Path) -> dict[str, object]:
     invariant.write_bytes(b"invariant")
     physics = static / "physics"
     physics.mkdir()
+    namelist = static / "namelist.atmosphere"
+    streams = static / "streams.atmosphere"
+    namelist.write_text("config_start_time = '2026-06-22_00:00:00'\n")
+    streams.write_text("<streams/>")
 
     return {
         "project": {
@@ -91,10 +95,13 @@ def _config(tmp_path: Path) -> dict[str, object]:
             "graph": str(graph),
             "partitions_dir": str(partitions),
             "nproc": 4,
+            "nvertlevels": 55,
         },
         "static": {
             "invariant": str(invariant),
-            "tutorial_physics_files": str(physics),
+            "support_dir": str(physics),
+            "namelist": str(namelist),
+            "streams": str(streams),
             "geovars": str(namelists / "geovars.yaml"),
             "keptvars": str(namelists / "keptvars.yaml"),
         },
@@ -151,7 +158,9 @@ def test_preflight_rejects_omitted_mandatory_static_and_mesh_resources(tmp_path:
     del static["invariant"]  # type: ignore[index]
     del static["geovars"]  # type: ignore[index]
     del static["keptvars"]  # type: ignore[index]
-    del static["tutorial_physics_files"]  # type: ignore[index]
+    del static["support_dir"]  # type: ignore[index]
+    del static["namelist"]  # type: ignore[index]
+    del static["streams"]  # type: ignore[index]
 
     payload = preflight_payload(config)
 
@@ -163,7 +172,8 @@ def test_preflight_rejects_omitted_mandatory_static_and_mesh_resources(tmp_path:
         "static.invariant",
         "static.geovars",
         "static.keptvars",
-        "static.tutorial_physics_files",
+        "static.namelist",
+        "static.streams",
     ):
         assert checks[name]["status"] == "NOT_CONFIGURED"
 
@@ -202,3 +212,63 @@ def test_preflight_accepts_parent_of_spack_stack_checkout(tmp_path: Path) -> Non
     assert checks["environment.variables.STACK_ROOT"]["path"] == str(checkout)
     assert checks["stack.site_setup"]["status"] == "OK"
     assert checks["stack.module_root"]["status"] == "OK"
+
+
+def test_generic_preflight_no_tutorial_directory_required(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    static = config["static"]
+    static.pop("support_dir")
+    checks = {item["name"]: item for item in preflight_payload(config)["checks"]}
+    assert "static.tutorial_physics_files" not in checks
+    assert "static.support_dir" not in checks
+    assert checks["static.namelist"]["status"] == "OK"
+    assert checks["static.streams"]["status"] == "OK"
+
+
+def test_generic_preflight_reports_missing_actual_yaml_fields(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    static = config["static"]
+    static.pop("namelist")
+    static.pop("streams")
+    checks = {item["name"]: item for item in preflight_payload(config)["checks"]}
+    for field in ("static.namelist", "static.streams"):
+        assert checks[field]["status"] == "NOT_CONFIGURED"
+        assert field in checks[field]["detail"]
+
+
+def test_preflight_catches_copied_vertical_settings_from_other_mesh(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    config["mesh"]["nvertlevels"] = 10
+    config["vbal"] = {"sampling": {"reduced levels": 55}}
+    config["nicas"] = {"dirac_level_from_top": 20}
+    report = preflight_payload(config)
+    checks = {item["name"]: item for item in report["checks"]}
+    assert checks["vbal.sampling.reduced levels"]["status"] == "INVALID"
+    assert checks["nicas.dirac_level_from_top"]["status"] == "INVALID"
+    assert "mesh.nvertlevels" in checks["vbal.sampling.reduced levels"]["detail"]
+
+
+def test_preflight_reports_stream_lists_from_selected_xml(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    static = config["static"]
+    streams = Path(static["streams"])
+    streams.write_text(
+        '<streams><stream name="analysis">'
+        '<file name="stream_list.atmosphere.background" />'
+        '</stream></streams>'
+    )
+    report = preflight_payload(config)
+    checks = {item["name"]: item for item in report["checks"]}
+    assert report["valid"] is False
+    assert checks["static.stream_lists[0]"]["status"] == "MISSING"
+    assert checks["static.stream_lists[0]"]["path"].endswith("stream_list.atmosphere.background")
+    (Path(static["support_dir"]) / "stream_list.atmosphere.background").touch()
+    assert preflight_payload(config)["valid"] is True
+
+
+def test_preflight_reports_invalid_case_streams_xml(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    Path(config["static"]["streams"]).write_text("<streams>")
+    checks = {item["name"]: item for item in preflight_payload(config)["checks"]}
+    assert checks["static.streams"]["status"] == "INVALID"
+    assert "XML" in checks["static.streams"]["detail"]

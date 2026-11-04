@@ -39,9 +39,12 @@ jobs:
       - name: Validate shell syntax
         run: |
           bash -n scripts/load_jaci_env.sh
-          for script in templates/pbs/*.pbs; do
+          for script in testcase/tutorial-240km/legacy-pbs/*.pbs; do
             bash -n "$script"
           done
+
+      - name: Check testcase runner syntax
+        run: bash -n testcase/tutorial-240km/run.sh
 
       - name: Run tests
         run: python -m pytest -p no:cacheprovider -q

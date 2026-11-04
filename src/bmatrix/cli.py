@@ -14,11 +14,8 @@ from .pipeline import BuildRequest, STAGES, build, generate_weights, plan, valid
 from .preflight import preflight_payload
 from .plots_core.runner import generate_plots
 
-DEFAULT_CONFIG = "configs/jaci-x1.10242.yaml"
-
-
 def _add_common(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", default=DEFAULT_CONFIG, help="YAML de plataforma que referencia o contrato científico.")
+    parser.add_argument("--config", required=True, help="Arquivo YAML do experimento ou plataforma.")
     parser.add_argument("--bflow-workspace", type=Path, help="Workspace BFLOW; quando omitido é determinístico.")
 
 
@@ -31,7 +28,7 @@ def _add_pair_source(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_plot_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--plot-level", type=int, default=30, help="Índice vertical usado para variáveis 3D.")
+    parser.add_argument("--plot-level", type=int, default=None, help="Índice vertical (padrão: nível central da malha).")
     parser.add_argument("--plot-dpi", type=int, default=150, help="Resolução das figuras PNG.")
     parser.add_argument(
         "--plot-variables",
@@ -51,7 +48,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     check = sub.add_parser("check-config", help="Valida e mostra a configuração resolvida.")
-    check.add_argument("--config", default=DEFAULT_CONFIG)
+    check.add_argument("--config", required=True)
+    check.add_argument("--json", action="store_true", help="Exibe o relatório completo em JSON.")
+    check.add_argument("--verbose", action="store_true", help="Inclui verificações bem-sucedidas.")
     check.set_defaults(handler=_check_config)
 
     check_manifest = sub.add_parser(
@@ -118,7 +117,7 @@ def _request(args: argparse.Namespace, *, dry_run: bool = False) -> BuildRequest
         poll_seconds=getattr(args, "poll_seconds", 30),
         nicas_parallel=getattr(args, "nicas_parallel", False),
         so_variant=getattr(args, "so_variant", "default"),
-        plot_level=getattr(args, "plot_level", 30),
+        plot_level=getattr(args, "plot_level", None),
         plot_dpi=getattr(args, "plot_dpi", 150),
         plot_variables=tuple(getattr(args, "plot_variables", None) or ()),
         plots_workspace=getattr(args, "plots_workspace", None),
@@ -129,9 +128,57 @@ def _request(args: argparse.Namespace, *, dry_run: bool = False) -> BuildRequest
 def _check_config(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     preflight = preflight_payload(config)
-    payload = {**config, "preflight": preflight}
-    print(json.dumps(payload, indent=2, default=str, sort_keys=True))
-    return 0 if preflight["valid"] else 2
+    if args.json:
+        payload = {**config, "preflight": preflight}
+        print(json.dumps(payload, indent=2, default=str, sort_keys=True))
+        return 0 if preflight["valid"] else 2
+
+    failures = [item for item in preflight["checks"] if not item["ok"]]
+    checks = preflight["checks"]
+    if args.verbose:
+        for item in checks:
+            if item["ok"]:
+                print(f"OK: {_human_label(item)} ({item['path']})")
+
+    if not failures:
+        print(f"Configuração pronta: {len(checks)} verificações aprovadas.")
+        return 0
+
+    print(f"Configuração incompleta: {len(failures)} problema(s) a corrigir:")
+    for index, item in enumerate(failures, 1):
+        print(f"{index}. {_human_label(item)}")
+        if item["path"] not in ("<unset>", "<invalid>"):
+            print(f"   Caminho: {item['path']}")
+        detail = str(item.get("detail") or "").strip()
+        if not detail:
+            guidance = {
+                "NOT_CONFIGURED": "Declare o campo indicado no YAML do experimento.",
+                "MISSING": "Corrija o caminho ou disponibilize o arquivo/diretório.",
+                "INVALID": "Revise o valor no YAML; o formato ou conteúdo é inválido.",
+                "WRONG_TYPE": "Informe um caminho do tipo esperado.",
+                "NOT_READABLE": "Verifique a permissão de leitura.",
+                "NOT_ACCESSIBLE": "Verifique a permissão de acesso ao diretório.",
+                "NOT_EXECUTABLE": "Verifique a instalação e a permissão de execução.",
+                "NOT_WRITABLE": "Selecione um diretório com permissão de escrita.",
+                "PARENT_NOT_WRITABLE": "Crie o diretório em um local gravável.",
+            }
+            detail = guidance.get(str(item["status"]), "Revise este recurso no YAML.")
+        print(f"   Correção: {detail}")
+    return 2
+
+
+def _human_label(item: dict[str, object]) -> str:
+    """Translate internal resource checks to actual YAML fields and user actions."""
+    name = str(item["name"])
+    if name == "mesh.partition":
+        return "Partição MPI (mesh.graph, mesh.partitions_dir e mesh.nproc)"
+    if name == "install.runtime_contract_v2":
+        return "Manifesto da instalação MONAN-JEDI (install.root)"
+    if name.startswith("install.") and name not in ("install.root", "install.atmosphere_share"):
+        return f"Executável/arquivo da instalação MONAN-JEDI: {Path(str(item['path'])).name}"
+    if name.startswith("stack."):
+        return f"Ambiente de execução: {Path(str(item['path'])).name}"
+    return name
 
 
 def _check_manifest(args: argparse.Namespace) -> int:
@@ -166,6 +213,21 @@ def _validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _plot_level(config: dict[str, object], requested: int | None) -> int:
+    """Default to the case's middle vertical level, not the tutorial's level 30."""
+    if requested is not None:
+        if requested < 0:
+            raise ValueError("--plot-level must be zero or greater.")
+        return requested
+    mesh = config.get("mesh", {})
+    if not isinstance(mesh, dict) or not isinstance(mesh.get("nvertlevels"), int):
+        raise ValueError("Set mesh.nvertlevels in the case YAML to plot 3D products.")
+    nlevels = mesh["nvertlevels"]
+    if nlevels < 1:
+        raise ValueError("mesh.nvertlevels must be a positive integer.")
+    return (nlevels - 1) // 2
+
+
 def _plots(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     request = _request(args)
@@ -174,7 +236,7 @@ def _plots(args: argparse.Namespace) -> int:
         resolved.final_products,
         resolved.paths.plots,
         clean=args.clean,
-        level=args.plot_level,
+        level=_plot_level(config, args.plot_level),
         dpi=args.plot_dpi,
         variables=args.plot_variables,
     )

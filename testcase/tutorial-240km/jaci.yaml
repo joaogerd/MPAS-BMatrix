@@ -1,0 +1,47 @@
+# =============================================================================
+# MPAS-BMatrix — runnable JACI case for the global MPAS x1.10242 mesh
+# =============================================================================
+#
+# This composes:
+#   1. configs/jaci.yaml              JACI/runtime settings;
+#   2. this file                      x1.10242 mesh/static inputs;
+#   3. configs/bmatrix-x1.10242.yaml  scientific B-matrix contract.
+#
+# MONAN-JEDI source trees are deliberately not part of this runtime contract.
+# geovars.yaml and keptvars.yaml are installed by MONAN-JEDI below
+# <install.root>/share/monan-jedi/mpas-jedi/namelists/.
+#
+# The concrete x1.10242 mesh/static paths match the JACI case already validated
+# end-to-end by mpaswf.  They remain case inputs, not MONAN-JEDI software paths.
+# =============================================================================
+
+include: ../../configs/jaci.yaml
+
+mesh:
+  name: x1.10242
+  grid: /p/projetos/monan_das/$USER/projects/mpas_meshes/quasi_uniform/x1.10242_240km/mesh/x1.10242.grid.nc
+  graph: /p/projetos/monan_das/$USER/projects/mpas_meshes/quasi_uniform/x1.10242_240km/graph/x1.10242.graph.info
+  partitions_dir: /p/projetos/monan_das/$USER/projects/mpas_meshes/quasi_uniform/x1.10242_240km/partitions
+  nproc: 128
+  nvertlevels: 55
+
+static:
+  invariant: /p/projetos/monan_das/$USER/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files/x1.10242.invariant.nc
+  # Historical external files, selected explicitly for this testcase.
+  namelist: /p/projetos/monan_das/$USER/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files/namelist.atmosphere_240km
+  streams: /p/projetos/monan_das/$USER/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files/streams.atmosphere_240km
+  support_dir: /p/projetos/monan_das/$USER/external-inputs/mpasjedi_tutorial202509NCAR/MPAS_namelist_stream_physics_files
+  stream_lists:
+    - stream_list.atmosphere.analysis
+    - stream_list.atmosphere.background
+    - stream_list.atmosphere.ensemble
+
+  # Public runtime support installed by MONAN-JEDI.
+  geovars: ${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/mpas-jedi/namelists/geovars.yaml
+  keptvars: ${MONAN_JEDI_INSTALL_ROOT}/share/monan-jedi/mpas-jedi/namelists/keptvars.yaml
+
+bmatrix:
+  configuration: bmatrix.yaml
+
+runtime:
+  config_dt: 60

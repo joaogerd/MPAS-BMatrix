@@ -5,6 +5,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 from .config import runtime_contract
 from .errors import ConfigurationError
@@ -17,6 +18,7 @@ class ResourceCheck:
     kind: str
     status: str
     ok: bool
+    detail: str = ""
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -244,6 +246,41 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
                     )
                     checks.append(_file("mesh.partition", partition))
 
+    levels = mesh.get("nvertlevels")
+    if isinstance(levels, bool) or not isinstance(levels, int) or levels <= 0:
+        checks.append(ResourceCheck(
+            "mesh.nvertlevels", str(levels) if levels is not None else "<unset>",
+            "positive integer", "NOT_CONFIGURED" if levels is None else "INVALID",
+            False, "Set mesh.nvertlevels to the number of vertical levels in "
+            "the selected MPAS initial/invariant states."
+        ))
+    else:
+        checks.append(ResourceCheck(
+            "mesh.nvertlevels", str(levels), "positive integer", "OK", True
+        ))
+        level_fields = (
+            ("vbal.sampling.reduced levels", "vbal", "sampling", "reduced levels"),
+            ("hdiag.sampling.reduced levels", "hdiag", "sampling", "reduced levels"),
+            ("nicas.dirac_level_from_top", "nicas", None, "dirac_level_from_top"),
+        )
+        for field, stage, subkey, leaf in level_fields:
+            section = _mapping(config, stage)
+            values = section.get(subkey) if subkey else section
+            if not isinstance(values, Mapping) or leaf not in values:
+                continue
+            candidate = values[leaf]
+            if isinstance(candidate, bool) or not isinstance(candidate, int) or not (1 <= candidate <= levels):
+                checks.append(ResourceCheck(
+                    field, str(candidate), f"integer in [1, {levels}]", "INVALID",
+                    False,
+                    f"Set {field} to a positive integer <= mesh.nvertlevels "
+                    f"({levels}); review the scientific sampling for this mesh."
+                ))
+            else:
+                checks.append(ResourceCheck(
+                    field, str(candidate), "vertical level selection", "OK", True
+                ))
+
     static = _mapping(config, "static")
     for key in ("invariant", "geovars", "keptvars"):
         value = static.get(key)
@@ -252,20 +289,80 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
         else:
             checks.append(_file(f"static.{key}", _path(value)))
 
-    physics_value = static.get("support_dir", static.get("tutorial_physics_files"))
-    if not physics_value:
-        checks.append(_missing("static.tutorial_physics_files", "directory"))
-    else:
-        checks.append(
-            _directory(
-                "static.tutorial_physics_files",
-                _path(physics_value),
-            )
-        )
+    support_key = "support_dir" if static.get("support_dir") else "tutorial_physics_files"
+    support_value = static.get(support_key)
+    support_dir = _path(support_value) if support_value else None
+    if support_dir is not None:
+        checks.append(_directory(f"static.{support_key}", support_dir))
 
+    legacy_case = (
+        str(mesh.get("name")) == "x1.10242"
+        and static.get("tutorial_physics_files")
+        and not static.get("namelist")
+        and not static.get("streams")
+    )
     for key in ("namelist", "streams"):
-        if static.get(key):
-            checks.append(_file(f"static.{key}", _path(static[key])))
+        explicit = static.get(key)
+        if explicit:
+            checks.append(_file(f"static.{key}", _path(explicit)))
+            continue
+        neutral = support_dir / f"{key}.atmosphere" if support_dir else None
+        if neutral is not None and neutral.is_file():
+            checks.append(_file(f"static.{key}", neutral))
+            continue
+        if legacy_case and support_dir is not None:
+            checks.append(_file(f"static.{key}", support_dir / f"{key}.atmosphere_240km"))
+            continue
+        checks.append(ResourceCheck(
+            f"static.{key}", "<unset>", "file", "NOT_CONFIGURED", False,
+            f"Add static.{key}: /absolute/path/to/your/case/{key}.atmosphere "
+            "to the case YAML. Use an MPAS file validated for this mesh."
+        ))
+
+    selected_lists = static.get("stream_lists")
+    if selected_lists is None:
+        selected_lists = []
+        selected_xml = static.get("streams")
+        if not selected_xml and support_dir:
+            selected_xml = str(support_dir / "streams.atmosphere")
+            if legacy_case and not Path(selected_xml).is_file():
+                selected_xml = str(support_dir / "streams.atmosphere_240km")
+        if selected_xml and _path(selected_xml).is_file():
+            try:
+                root = ET.parse(_path(selected_xml)).getroot()
+            except (ET.ParseError, OSError) as error:
+                checks.append(ResourceCheck(
+                    "static.streams", str(selected_xml), "valid MPAS streams XML",
+                    "INVALID", False,
+                    f"Correct the MPAS streams XML file: {error}"
+                ))
+            else:
+                selected_lists = [
+                    element.get("name")
+                    for element in root.iter()
+                    if element.tag.rsplit("}", 1)[-1] == "file"
+                    and (element.get("name") or "").startswith("stream_list.atmosphere.")
+                ]
+    if not isinstance(selected_lists, list) or not all(
+        isinstance(name, str) and name and Path(name).name == name
+        for name in selected_lists
+    ):
+        checks.append(ResourceCheck(
+            "static.stream_lists", "<invalid>", "list of filenames", "INVALID",
+            False, "Set static.stream_lists to a YAML list of valid filenames."
+        ))
+    elif selected_lists:
+        if support_dir is None:
+            checks.append(ResourceCheck(
+                "static.support_dir", "<unset>", "directory", "NOT_CONFIGURED",
+                False, "Set static.support_dir to the directory containing "
+                "the files declared in static.stream_lists."
+            ))
+        else:
+            for index, name in enumerate(selected_lists):
+                if name == "stream_list.atmosphere.control":
+                    continue
+                checks.append(_file(f"static.stream_lists[{index}]", support_dir / name))
 
     return checks
 

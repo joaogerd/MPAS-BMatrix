@@ -15,6 +15,11 @@ Scientific/developer docs
   theory, contracts, architecture, tests and extension rules
 ```
 
+For a full working scientific case rather than a configuration excerpt, see
+[**testcase/tutorial-240km**](../testcase/tutorial-240km/README.md).
+Use `--config` to select this or any other experiment. The old tutorial
+files in `configs/` are compatibility snapshots only; they are not defaults.
+
 ## User/operator documentation
 
 Read these when your goal is to configure or run the pipeline and inspect its

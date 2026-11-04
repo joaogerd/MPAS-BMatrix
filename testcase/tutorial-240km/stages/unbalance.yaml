@@ -1,0 +1,32 @@
+# =============================================================================
+# MPAS-BMatrix scientific contract — LEGACY UNBALANCE A/B reference
+# =============================================================================
+#
+# This fragment is NOT part of the production stage graph.
+#
+# The production path is:
+#
+#   VBAL -> HDIAG
+#
+# where HDIAG reads the original centered NMC perturbations and applies inverse
+# BUMP_VerticalBalance in memory before BUMP_NICAS calibration.
+#
+# This fragment is retained temporarily so the previous explicit path can be
+# reproduced during migration validation:
+#
+#   VBAL -> UNBALANCE (K2^-1 -> samplesUnbalanced) -> reference HDIAG
+#
+# Remove this fragment together with unbalance_core after the documented A/B
+# comparison demonstrates numerical equivalence through HDIAG/NICAS/DIRAC/SO.
+# =============================================================================
+
+unbalance:
+  drivers:
+    # Legacy materialized path reads the rank-local sampling products from VBAL.
+    read local sampling: true
+
+    # The validated legacy inversion does not require global sampling.
+    read global sampling: false
+
+    # Read the calibrated vertical-balance coefficients.
+    read vertical balance: true

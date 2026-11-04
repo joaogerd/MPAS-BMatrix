@@ -1,0 +1,47 @@
+# =============================================================================
+# MPAS-BMatrix scientific contract — control-variable registry
+# =============================================================================
+#
+# Purpose
+# -------
+# Declares the B-matrix control variables once for all stages. The order is
+# scientifically meaningful and is reused when generating stream lists, aliases,
+# ensemble templates and SABER blocks.
+#
+# How to modify it
+# ----------------
+# - Add/remove a control only when every downstream stage and MPAS-JEDI variable
+#   change supports it.
+# - `code` is the canonical JEDI/SABER/OOPS name.
+# - `file` is the physical variable name stored in BFLOW/B-matrix NetCDF files.
+# - `dimensions` controls the 3D/2D split used for local NICAS reads.
+# - Lists are atomic during configuration composition: overriding `controls`
+#   replaces this complete list rather than appending to it.
+# =============================================================================
+
+controls:
+  # Three-dimensional rotational wind control (streamfunction).
+  - code: air_horizontal_streamfunction
+    file: stream_function
+    dimensions: 3d
+
+  # Three-dimensional divergent wind control (velocity potential).
+  - code: air_horizontal_velocity_potential
+    file: velocity_potential
+    dimensions: 3d
+
+  # Three-dimensional thermal control.
+  - code: air_temperature
+    file: temperature
+    dimensions: 3d
+
+  # Three-dimensional moisture control expressed as specific humidity in files.
+  - code: water_vapor_mixing_ratio_wrt_moist_air
+    file: spechum
+    dimensions: 3d
+
+  # Two-dimensional surface-pressure control. Keeping `dimensions: 2d` is
+  # critical because SO/DIRAC must read its NICAS group separately from 3D data.
+  - code: air_pressure_at_surface
+    file: surface_pressure
+    dimensions: 2d
