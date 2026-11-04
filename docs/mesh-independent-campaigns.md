@@ -1,5 +1,10 @@
 # Mesh-independent covariance campaigns
 
+Start from [the self-contained scientific testcase](../testcase/tutorial-240km/README.md)
+and copy it when creating a new resolution or forecast period. The selected
+YAML must be supplied explicitly through `--config`. Scientific stage
+parameters are case-specific and are never guessed from the mesh name.
+
 Forecast generation belongs to MPASWF. BMatrix consumes its f048/f024 manifest;
 the geometry used by covariance stages must agree with those states.
 
