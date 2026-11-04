@@ -372,7 +372,7 @@ def build_parser() -> argparse.ArgumentParser:
             "compare-downstream",
         ),
     )
-    parser.add_argument("--config", default="configs/jaci-x1.10242.yaml")
+    parser.add_argument("--config", required=True, help="YAML do experimento.")
     parser.add_argument("--vbal-workspace", type=Path, required=True)
     parser.add_argument("--root", type=Path, help="Optional isolated A/B root.")
     parser.add_argument("--clean", action="store_true", help="Explicitly recreate the selected A/B workspace.")
