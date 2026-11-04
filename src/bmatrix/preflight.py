@@ -5,6 +5,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 from .config import runtime_contract
 from .errors import ConfigurationError
@@ -318,9 +319,30 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
             "to the case YAML. Use an MPAS file validated for this mesh."
         ))
 
-    selected_lists = static.get("stream_lists", [])
+    selected_lists = static.get("stream_lists")
     if selected_lists is None:
         selected_lists = []
+        selected_xml = static.get("streams")
+        if not selected_xml and support_dir:
+            selected_xml = str(support_dir / "streams.atmosphere")
+            if legacy_case and not Path(selected_xml).is_file():
+                selected_xml = str(support_dir / "streams.atmosphere_240km")
+        if selected_xml and _path(selected_xml).is_file():
+            try:
+                root = ET.parse(_path(selected_xml)).getroot()
+            except (ET.ParseError, OSError) as error:
+                checks.append(ResourceCheck(
+                    "static.streams", str(selected_xml), "valid MPAS streams XML",
+                    "INVALID", False,
+                    f"Correct the MPAS streams XML file: {error}"
+                ))
+            else:
+                selected_lists = [
+                    element.get("name")
+                    for element in root.iter()
+                    if element.tag.rsplit("}", 1)[-1] == "file"
+                    and (element.get("name") or "").startswith("stream_list.atmosphere.")
+                ]
     if not isinstance(selected_lists, list) or not all(
         isinstance(name, str) and name and Path(name).name == name
         for name in selected_lists
