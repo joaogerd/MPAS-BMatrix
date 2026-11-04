@@ -10,7 +10,6 @@ from ..errors import ConfigurationError
 from ..mpas_core.model import bflow_file
 
 TIME_FORMAT = "%Y-%m-%d_%H:%M:%S"
-DEFAULT_CONFIG = "configs/jaci-x1.10242.yaml"
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +90,12 @@ def default_workspace(config: Mapping[str, object], start_valid_time: str, end_v
     project = config.get("project")
     if not isinstance(mesh, Mapping) or not isinstance(project, Mapping):
         raise ConfigurationError("mesh e project devem ser blocos YAML.")
-    nproc = int(mesh.get("nproc", 64))
+    try:
+        nproc = int(mesh["nproc"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ConfigurationError("Declare mesh.nproc as a positive integer in the case YAML.") from exc
+    if nproc < 1:
+        raise ConfigurationError("mesh.nproc must be positive.")
     return (
         Path(str(project["work_root"]))
         / "bmatrix"
