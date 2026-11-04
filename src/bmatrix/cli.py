@@ -28,7 +28,7 @@ def _add_pair_source(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_plot_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--plot-level", type=int, default=30, help="Índice vertical usado para variáveis 3D.")
+    parser.add_argument("--plot-level", type=int, default=None, help="Índice vertical (padrão: nível central da malha).")
     parser.add_argument("--plot-dpi", type=int, default=150, help="Resolução das figuras PNG.")
     parser.add_argument(
         "--plot-variables",
@@ -117,7 +117,7 @@ def _request(args: argparse.Namespace, *, dry_run: bool = False) -> BuildRequest
         poll_seconds=getattr(args, "poll_seconds", 30),
         nicas_parallel=getattr(args, "nicas_parallel", False),
         so_variant=getattr(args, "so_variant", "default"),
-        plot_level=getattr(args, "plot_level", 30),
+        plot_level=getattr(args, "plot_level", None),
         plot_dpi=getattr(args, "plot_dpi", 150),
         plot_variables=tuple(getattr(args, "plot_variables", None) or ()),
         plots_workspace=getattr(args, "plots_workspace", None),
@@ -213,6 +213,21 @@ def _validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _plot_level(config: dict[str, object], requested: int | None) -> int:
+    """Default to the case's middle vertical level, not the tutorial's level 30."""
+    if requested is not None:
+        if requested < 0:
+            raise ValueError("--plot-level must be zero or greater.")
+        return requested
+    mesh = config.get("mesh", {})
+    if not isinstance(mesh, dict) or not isinstance(mesh.get("nvertlevels"), int):
+        raise ValueError("Set mesh.nvertlevels in the case YAML to plot 3D products.")
+    nlevels = mesh["nvertlevels"]
+    if nlevels < 1:
+        raise ValueError("mesh.nvertlevels must be a positive integer.")
+    return (nlevels - 1) // 2
+
+
 def _plots(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     request = _request(args)
@@ -221,7 +236,7 @@ def _plots(args: argparse.Namespace) -> int:
         resolved.final_products,
         resolved.paths.plots,
         clean=args.clean,
-        level=args.plot_level,
+        level=_plot_level(config, args.plot_level),
         dpi=args.plot_dpi,
         variables=args.plot_variables,
     )
