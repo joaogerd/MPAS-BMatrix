@@ -33,6 +33,19 @@ from .so_core.model import so_workspace
 from .vbal_core.model import vbal_workspace
 from .vbal_core.runner import prepare as prepare_vbal, submit as submit_vbal, validate as validate_vbal
 
+def _resolved_plot_level(config: Mapping[str, object], requested: int | None) -> int:
+    """Use the campaign's vertical geometry for plot defaults."""
+    if requested is not None:
+        if requested < 0:
+            raise ConfigurationError("plot_level must be non-negative.")
+        return requested
+    mesh = config.get("mesh")
+    levels = mesh.get("nvertlevels") if isinstance(mesh, Mapping) else None
+    if isinstance(levels, bool) or not isinstance(levels, int) or levels < 1:
+        raise ConfigurationError("Set mesh.nvertlevels in the case YAML for 3D plots.")
+    return (levels - 1) // 2
+
+
 StageName = Literal["bflow", "vbal", "hdiag", "nicas", "so", "dirac", "plots"]
 STAGES: tuple[StageName, ...] = ("bflow", "vbal", "hdiag", "nicas", "so", "dirac", "plots")
 
@@ -93,7 +106,7 @@ class BuildRequest:
     poll_seconds: int = 30
     nicas_parallel: bool = False
     so_variant: str = "default"
-    plot_level: int = 30
+    plot_level: int | None = None
     plot_dpi: int = 150
     plot_variables: tuple[str, ...] = ()
     plots_workspace: Path | None = None
@@ -242,7 +255,7 @@ def build(config: Mapping[str, object], request: BuildRequest) -> PipelinePlan:
                 pipeline_plan.final_products,
                 paths.plots,
                 clean=request.clean,
-                level=request.plot_level,
+                level=_resolved_plot_level(config, request.plot_level),
                 dpi=request.plot_dpi,
                 variables=request.plot_variables,
             )
