@@ -144,16 +144,19 @@ class PipelinePlan:
 def _pairs_from_request(config: Mapping[str, object], request: BuildRequest) -> tuple[list[BflowPair], Path]:
     if request.manifest:
         older, newer = nmc_leads(config)
-        if (older, newer) != (48, 24):
-            raise ConfigurationError(
-                "O manifesto NMC atual contém previsões f048/f024, mas o YAML declara "
-                f"bflow.nmc = {older}/{newer} horas. Corrija "
-                "bflow.nmc.older_lead_hours e bflow.nmc.newer_lead_hours para 48/24 "
-                "ou utilize um contrato de manifesto versionado compatível com outros leads."
-            )
         pairs = read_manifest(request.manifest)
         if not pairs:
             raise WorkflowError("Manifesto BFLOW/NMC não contém pares.")
+        if any(
+            (pair.older_lead_hours, pair.newer_lead_hours) != (older, newer)
+            for pair in pairs
+        ):
+            raise ConfigurationError(
+                f"O experimento declara previsões NMC {older}/{newer} horas, "
+                "mas o manifesto recebido identifica outro par. Ajuste "
+                "bflow.nmc.older_lead_hours e bflow.nmc.newer_lead_hours "
+                "ou selecione o manifesto do experimento correto."
+            )
         if request.bflow_workspace:
             workspace = request.bflow_workspace
         else:
