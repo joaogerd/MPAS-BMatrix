@@ -11,11 +11,29 @@ MINIMUM_PAIRS = 4
 
 @dataclass(frozen=True)
 class NMCManifestPair:
-    """One BFLOW input pair: old f048 and new f024 at the same valid time."""
+    """One same-valid-time NMC pair, including its actual lead durations.
+
+    f048/f024 are retained as historical Python fields for legacy callers.
+    The generic API and all v2 user messages use older/newer semantics.
+    """
 
     valid_time: str
     f048: Path
     f024: Path
+    older_lead_hours: int = 48
+    newer_lead_hours: int = 24
+
+    @property
+    def older(self) -> Path:
+        return self.f048
+
+    @property
+    def newer(self) -> Path:
+        return self.f024
+
+    @property
+    def leads_hours(self) -> tuple[int, int]:
+        return self.older_lead_hours, self.newer_lead_hours
 
 
 def parse_time(value: str) -> datetime:
