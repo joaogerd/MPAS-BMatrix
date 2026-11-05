@@ -154,7 +154,22 @@ def _pairs_from_request(config: Mapping[str, object], request: BuildRequest) -> 
             "Informe --manifest ou --start-valid-time/--end-valid-time ao iniciar em BFLOW."
         )
     runtime = config.get("runtime", {})
-    dt = request.dt or int(runtime.get("config_dt", 60)) if isinstance(runtime, Mapping) else request.dt or 60
+    configured_dt = runtime.get("config_dt") if isinstance(runtime, Mapping) else None
+    raw_dt = request.dt if request.dt is not None else configured_dt
+    if raw_dt is None:
+        raise ConfigurationError(
+            "O timestep do modelo não está configurado. Informe --dt em segundos "
+            "ou declare runtime.config_dt no YAML do experimento. "
+            "O BMatrix não pode presumir o timestep de outra malha."
+        )
+    if isinstance(raw_dt, bool):
+        raise ConfigurationError("runtime.config_dt/--dt deve ser um número inteiro positivo.")
+    try:
+        dt = int(raw_dt)
+    except (ValueError, TypeError) as exc:
+        raise ConfigurationError("runtime.config_dt/--dt deve ser um número inteiro positivo.") from exc
+    if dt <= 0 or (isinstance(raw_dt, float) and not raw_dt.is_integer()):
+        raise ConfigurationError("runtime.config_dt/--dt deve ser um número inteiro positivo.")
     pairs = build_pairs_from_range(
         config,
         request.start_valid_time,
