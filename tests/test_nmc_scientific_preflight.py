@@ -1,5 +1,7 @@
 from __future__ import annotations
 import csv
+import json
+import hashlib
 from pathlib import Path
 import netCDF4
 import numpy as np
@@ -173,5 +175,73 @@ def test_mixed_campaign_does_not_claim_all_state_geometries_verified(tmp_path):
 def test_nmc_manifest_rejects_conflicting_lead_definitions(tmp_path):
     config = _config(_canonical_mesh(tmp_path))
     config["bflow"]["nmc"] = {"older_lead_hours": 72, "newer_lead_hours": 24}
-    with pytest.raises(ManifestError, match="f048/f024"):
+    with pytest.raises(ManifestError, match="YAML científico"):
         validate_manifest(_manifest(tmp_path), config=config)
+
+
+def _v2_manifest(tmp_path: Path, older: int = 36, newer: int = 12) -> Path:
+    legacy = _manifest(tmp_path)
+    with legacy.open(newline="", encoding="utf-8") as handle:
+        originals = list(csv.DictReader(handle, delimiter="\t"))
+    output = tmp_path / "forecast-v2.tsv"
+    fields = ["valid_time", "older_lead_hours", "newer_lead_hours",
+              "older_state", "newer_state", "older_restart", "newer_restart"]
+    with output.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t")
+        writer.writeheader()
+        for row in originals:
+            writer.writerow({
+                "valid_time": row["valid_time"],
+                "older_lead_hours": older,
+                "newer_lead_hours": newer,
+                "older_state": row["f048"],
+                "newer_state": row["f024"],
+                "older_restart": "unused-restart.nc",
+                "newer_restart": "unused-restart.nc",
+            })
+    sidecar = {
+        "schema_version": 2,
+        "contract": "monan-nmc-forecast-pairs-v2",
+        "producer": "mpaswf",
+        "consumer": "MPAS-BMatrix",
+        "manifest": output.name,
+        "manifest_format": "tsv",
+        "manifest_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+        "columns": fields,
+        "pair_count": len(originals),
+        "leads_hours": {"older": older, "newer": newer},
+    }
+    output.with_suffix(".json").write_text(json.dumps(sidecar))
+    return output
+
+
+def test_scientific_nmc_v2_validates_arbitrary_leads_and_original_mesh(tmp_path):
+    manifest = _v2_manifest(tmp_path, older=36, newer=12)
+    config = _config(_canonical_mesh(tmp_path))
+    config["bflow"]["nmc"] = {"older_lead_hours": 36, "newer_lead_hours": 12}
+    report = validate_manifest(manifest, config=config)
+    assert report["producer_contract_verified"] is True
+    assert report["producer_contract"]["schema_version"] == 2
+    assert report["scientific_contract"]["mesh_shape"] == [3, 2]
+    assert report["scientific_contract"]["pairs"][0]["older"]["mesh"]["state_geometry_verified"] is True
+    assert report["scientific_contract"]["pairs"][0]["newer"]["mesh"]["state_geometry_verified"] is True
+
+
+def test_nmc_v2_detects_manifest_tampering_and_invalid_case_leads(tmp_path):
+    manifest = _v2_manifest(tmp_path)
+    config = _config(_canonical_mesh(tmp_path))
+    config["bflow"]["nmc"] = {"older_lead_hours": 72, "newer_lead_hours": 12}
+    with pytest.raises(ManifestError, match="YAML científico"):
+        validate_manifest(manifest, config=config)
+    config["bflow"]["nmc"]["older_lead_hours"] = 36
+    with manifest.open("a") as handle:
+        handle.write("\n")
+    with pytest.raises(ManifestError, match="SHA-256"):
+        validate_manifest(manifest, config=config)
+
+
+def test_nmc_v2_requires_sidecar_for_unknown_forecast_provenance(tmp_path):
+    manifest = _v2_manifest(tmp_path)
+    manifest.with_suffix(".json").unlink()
+    with pytest.raises(ManifestError, match="contrato versionado"):
+        validate_manifest(manifest)
