@@ -19,6 +19,7 @@ def _case(tmp_path: Path) -> dict:
         "mesh": {"name": "regional.mesh", "nproc": 96, "nvertlevels": 12},
         "runtime": {},
         "bflow": {
+            "forecast_state_template": "runs/{mesh_name}/{init_compact}/f{lead_padded}/state_dt{dt}.nc",
             "nmc": {"older_lead_hours": 48, "newer_lead_hours": 24},
             "products": {"perturbation": "PTB.nc"},
         },
@@ -46,7 +47,7 @@ def test_range_requires_actual_timestep_not_240km_default(tmp_path: Path):
         ),
     )
     assert len(pairs) == 3
-    assert all("_dt135_" in str(pair.f048) for pair in pairs)
+    assert all("state_dt135.nc" in str(pair.f048) for pair in pairs)
 
 
 def test_manifest_rejects_lead_definitions_that_disagree_with_f048_f024(tmp_path: Path):
