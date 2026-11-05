@@ -33,6 +33,15 @@ def validate_pairs(pairs: list[NMCManifestPair], *, minimum_pairs: int = MINIMUM
             f"NMC manifest contains {len(pairs)} pair(s), but B-matrix calibration requires at least {minimum_pairs}."
         )
 
+    leads = {(pair.older_lead_hours, pair.newer_lead_hours) for pair in pairs}
+    if len(leads) != 1 or any(
+        newer < 1 or older <= newer for older, newer in leads
+    ):
+        raise ManifestError(
+            "O manifesto reúne leads NMC inconsistentes. "
+            "Todos os pares precisam utilizar o mesmo forecast mais antigo "
+            "e mais recente, ambos em horas positivas."
+        )
     previous = None
     seen: set[str] = set()
     records = []
@@ -42,24 +51,40 @@ def validate_pairs(pairs: list[NMCManifestPair], *, minimum_pairs: int = MINIMUM
             raise ManifestError(f"Duplicate NMC valid_time: {pair.valid_time}")
         if previous is not None and parsed <= previous:
             raise ManifestError("NMC manifest valid_time values must be strictly increasing.")
-        if pair.f048.resolve() == pair.f024.resolve():
-            raise ManifestError(f"f048 and f024 resolve to the same file for {pair.valid_time}.")
-        records.append(
-            {
-                "valid_time": pair.valid_time,
-                "f048": _require_product(pair.f048, f"f048 for {pair.valid_time}"),
-                "f024": _require_product(pair.f024, f"f024 for {pair.valid_time}"),
-            }
-        )
+        if pair.older.resolve() == pair.newer.resolve():
+            raise ManifestError(
+                f"As previsões NMC mais antiga e mais recente usam o mesmo arquivo "
+                f"no horário {pair.valid_time}."
+            )
+        legacy = pair.leads_hours == (48, 24)
+        records.append({
+            "valid_time": pair.valid_time,
+            "older_lead_hours": pair.older_lead_hours,
+            "newer_lead_hours": pair.newer_lead_hours,
+            "f048" if legacy else "older": _require_product(
+                pair.older, f"older forecast ({pair.older_lead_hours}h) for {pair.valid_time}"
+            ),
+            "f024" if legacy else "newer": _require_product(
+                pair.newer, f"newer forecast ({pair.newer_lead_hours}h) for {pair.valid_time}"
+            ),
+        })
         seen.add(pair.valid_time)
         previous = parsed
     return {"valid": True, "minimum_pairs": minimum_pairs, "pairs": records}
 
 
-def _validate_contract_sidecar(path: Path, pair_count: int) -> dict[str, object] | None:
-    """Validate the optional versioned mpaswf producer contract."""
+def _validate_contract_sidecar(
+    path: Path, pair_count: int, leads: tuple[int, int] = (48, 24)
+) -> dict[str, object] | None:
+    """Validate a content-bound producer/consumer contract for NMC v1 or v2."""
     sidecar = path.with_suffix(".json")
     if not sidecar.is_file():
+        if leads != (48, 24):
+            raise ManifestError(
+                f"O manifesto NMC de leads {leads[0]}/{leads[1]} horas precisa "
+                f"do contrato versionado {sidecar}. Solicite ao produtor dos "
+                "forecasts que gere o sidecar JSON com o SHA-256 do manifesto."
+            )
         return None
     try:
         payload = json.loads(sidecar.read_text(encoding="utf-8"))
@@ -67,16 +92,32 @@ def _validate_contract_sidecar(path: Path, pair_count: int) -> dict[str, object]
         raise ManifestError(f"Invalid NMC contract sidecar {sidecar}: {exc}") from exc
     if not isinstance(payload, dict):
         raise ManifestError(f"NMC contract sidecar must contain a JSON object: {sidecar}")
+    legacy = leads == (48, 24)
+    fields = (
+        ["valid_time", "f048_state", "f024_state", "f048_restart", "f024_restart"]
+        if legacy else [
+            "valid_time", "older_lead_hours", "newer_lead_hours",
+            "older_state", "newer_state", "older_restart", "newer_restart",
+        ]
+    )
     expected = {
-        "schema_version": 1,
-        "contract": "monan-nmc-forecast-pairs-v1",
-        "producer": "mpaswf",
+        "schema_version": 1 if legacy else 2,
+        "contract": "monan-nmc-forecast-pairs-v1" if legacy else "monan-nmc-forecast-pairs-v2",
         "consumer": "MPAS-BMatrix",
         "manifest": path.name,
         "manifest_format": "tsv",
-        "columns": ["valid_time", "f048_state", "f024_state", "f048_restart", "f024_restart"],
+        "columns": fields,
         "pair_count": pair_count,
     }
+    if legacy:
+        expected["producer"] = "mpaswf"
+    else:
+        expected["leads_hours"] = {"older": leads[0], "newer": leads[1]}
+        producer = payload.get("producer")
+        if not isinstance(producer, str) or not producer.strip():
+            raise ManifestError(
+                f"O contrato NMC v2 {sidecar} deve identificar o produtor dos forecasts."
+            )
     for key, value in expected.items():
         if payload.get(key) != value:
             raise ManifestError(
@@ -85,7 +126,7 @@ def _validate_contract_sidecar(path: Path, pair_count: int) -> dict[str, object]
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     if payload.get("manifest_sha256") != digest:
         raise ManifestError(
-            f"NMC contract sidecar SHA-256 does not match manifest {path}; regenerate the mpaswf manifest."
+            f"NMC contract sidecar SHA-256 does not match manifest {path}; regenerate the manifest."
         )
     return {
         "path": str(sidecar.resolve()),
@@ -93,8 +134,8 @@ def _validate_contract_sidecar(path: Path, pair_count: int) -> dict[str, object]
         "schema_version": payload["schema_version"],
         "producer": payload["producer"],
         "verified_sha256": digest,
+        "leads_hours": {"older": leads[0], "newer": leads[1]},
     }
-
 
 
 def _required_bflow_input_variables(config: Mapping[str, object]) -> tuple[str, ...]:
@@ -340,11 +381,15 @@ def validate_scientific_pairs(
             "Configure bflow.nmc.older_lead_hours e bflow.nmc.newer_lead_hours "
             "no contrato científico para validar o manifesto NMC."
         ) from exc
-    if (older, newer) != (48, 24):
+    mismatched = [
+        pair.valid_time for pair in pairs
+        if pair.leads_hours != (older, newer)
+    ]
+    if mismatched:
         raise ManifestError(
-            "O manifesto NMC v1 identifica previsões f048/f024, mas "
-            f"bflow.nmc declara {older}/{newer} horas. Corrija o YAML ou use "
-            "um contrato de manifesto versionado que represente esses leads."
+            f"O YAML científico declara pares NMC {older}/{newer} horas, "
+            f"mas o manifesto contém outros leads em {', '.join(mismatched[:3])}. "
+            "Corrija bflow.nmc ou forneça um manifesto com os mesmos leads."
         )
     required = _required_bflow_input_variables(config)
     mesh_name, mesh_path, expected_nvertlevels = _mesh_contract(config)
@@ -354,31 +399,42 @@ def validate_scientific_pairs(
     reference_shape: tuple[int, int] | None = None
     for pair in pairs:
         expected = pair.valid_time
-        f048 = _inspect_state(
-            pair.f048, required, expected, mesh_name=mesh_name, canonical_mesh=canonical_mesh, vertical_grid=vertical_grid
+        older_state = _inspect_state(
+            pair.older, required, expected, mesh_name=mesh_name,
+            canonical_mesh=canonical_mesh, vertical_grid=vertical_grid
         )
-        f024 = _inspect_state(
-            pair.f024, required, expected, mesh_name=mesh_name, canonical_mesh=canonical_mesh, vertical_grid=vertical_grid
+        newer_state = _inspect_state(
+            pair.newer, required, expected, mesh_name=mesh_name,
+            canonical_mesh=canonical_mesh, vertical_grid=vertical_grid
         )
-        shape48 = (int(f048["nCells"]), int(f048["nVertLevels"]))
-        shape24 = (int(f024["nCells"]), int(f024["nVertLevels"]))
-        for label, shape in (("f048", shape48), ("f024", shape24)):
+        older_shape = (int(older_state["nCells"]), int(older_state["nVertLevels"]))
+        newer_shape = (int(newer_state["nCells"]), int(newer_state["nVertLevels"]))
+        for label, shape in (("older", older_shape), ("newer", newer_shape)):
             if shape[1] != expected_nvertlevels:
                 raise ManifestError(
-                    f"NMC {label} state at {pair.valid_time} has nVertLevels={shape[1]}, "
+                    f"NMC {label} forecast at {pair.valid_time} has nVertLevels={shape[1]}, "
                     f"but this case declares mesh.nvertlevels={expected_nvertlevels}."
                 )
-        if shape48 != shape24:
+        if older_shape != newer_shape:
             raise ManifestError(
-                f"NMC pair {pair.valid_time} uses incompatible MPAS grids: f048={shape48}, f024={shape24}."
+                f"Par NMC {pair.valid_time} utiliza malhas incompatíveis: "
+                f"mais antiga={older_shape}, mais recente={newer_shape}."
             )
         if reference_shape is None:
-            reference_shape = shape48
-        elif shape48 != reference_shape:
+            reference_shape = older_shape
+        elif older_shape != reference_shape:
             raise ManifestError(
-                f"NMC campaign changes MPAS grid at {pair.valid_time}: {shape48}; expected {reference_shape}."
+                f"NMC campaign changes MPAS grid at {pair.valid_time}: "
+                f"{older_shape}; expected {reference_shape}."
             )
-        records.append({"valid_time": pair.valid_time, "f048": f048, "f024": f024})
+        legacy = (older, newer) == (48, 24)
+        records.append({
+            "valid_time": pair.valid_time,
+            "older_lead_hours": older,
+            "newer_lead_hours": newer,
+            "f048" if legacy else "older": older_state,
+            "f024" if legacy else "newer": newer_state,
+        })
     return {
         "valid": True,
         "required_variables": list(required),
@@ -391,7 +447,8 @@ def validate_scientific_pairs(
             "nVertLevels": expected_nvertlevels,
             "state_geometry_verified": all(
                 record[lead]["mesh"]["state_geometry_verified"]
-                for record in records for lead in ("f048", "f024")
+                for record in records
+                for lead in (("f048", "f024") if (older, newer) == (48, 24) else ("older", "newer"))
             ),
             "vertical_identity": {
                 "source": vertical_grid["source"],
@@ -420,7 +477,7 @@ def validate_manifest(
     report = validate_pairs(pairs, minimum_pairs=minimum_pairs)
     report["manifest"] = str(path.resolve())
     report["pair_count"] = len(pairs)
-    contract = _validate_contract_sidecar(path, len(pairs))
+    contract = _validate_contract_sidecar(path, len(pairs), pairs[0].leads_hours)
     report["producer_contract"] = contract
     report["producer_contract_verified"] = contract is not None
     if config is not None:

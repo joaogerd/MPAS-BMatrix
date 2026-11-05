@@ -357,3 +357,60 @@ number of vertical levels, axis order or numeric/non-numeric type now fails
 with the field name and dimensions rather than being silently omitted.
 This check complements the canonical mesh preflight and prevents accidental
 calibration from incomplete NMC perturbation samples.
+
+## NMC producer/consumer contract v2: configurable forecast leads
+
+The legacy `monan-nmc-forecast-pairs-v1` protocol, with
+`f048_state/f024_state`, is fully supported for existing campaigns.
+
+For a new two-lead NMC scientific configuration, MPASWF now emits a
+**versioned v2** TSV and adjacent JSON sidecar. The TSV fields are:
+
+```text
+valid_time  older_lead_hours  newer_lead_hours  older_state  newer_state  older_restart  newer_restart
+```
+
+The columns are TAB-separated. The two state paths are the actual MPAS
+DA-state files; the restart paths are provided for provenance and are not
+used as BFLOW perturbation inputs. A v2 row always has
+`older_lead_hours > newer_lead_hours > 0`; every row of one campaign must
+use the same lead pair.
+
+Set the BMatrix scientific configuration to those exact durations:
+
+```yaml
+bflow:
+  nmc:
+    older_lead_hours: 36
+    newer_lead_hours: 12
+```
+
+Then run, for example,
+
+```bash
+mpas-bmatrix check-manifest --config case.yaml --manifest /archive/mpas-forecast-manifest.tsv
+mpas-bmatrix build --config case.yaml --manifest /archive/mpas-forecast-manifest.tsv --from-stage bflow --to-stage dirac
+```
+
+The BMatrix reader verifies the producer sidecar (schema/columns,
+producer/consumer identity, actual lead pair, pair count and SHA-256) and
+then checks the forecast times and mesh/vertical geometry in NetCDF. It
+rejects conflicting YAML lead settings rather than silently treating a
+36-hour forecast as f048.
+
+The BFLOW workspace manifest and input links preserve actual lead
+durations (`f036.nc`, `f012.nc` for 36/12). The legacy pair retains its
+historical `f048.nc` and `f024.nc` links for compatibility. Relative
+paths in a producer manifest are resolved against that manifest's
+directory, not the shell's current directory.
+
+Both producer and consumer have synthetic regression tests for the v1
+and v2 contracts, including invalid lead pairs, tampering, missing
+sidecars, incompatible model grids and changes in sample periods.
+
+**Scientific limitation:** Any older/newer pair implements an NMC
+difference; statistical representativeness, covariance length scales and
+other calibrated B parameters remain scientific decisions that must be
+validated with the selected dataset. This change does not eliminate the
+minimum sample count, SABER/BUMP runtime dependencies or the need for
+full JACI numerical regression testing.

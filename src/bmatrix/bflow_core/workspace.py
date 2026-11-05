@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 
 from ..artifacts import StageManifest, write_manifest as write_stage_manifest
 from ..nmc_core.checks import validate_pairs as validate_nmc_pairs
@@ -13,7 +14,14 @@ from .model import BflowPair, compact_time
 def validate_pairs(pairs: list[BflowPair], *, minimum_pairs: int = MINIMUM_PAIRS) -> None:
     """Reject incomplete, duplicate or missing f048/f024 inputs before BFLOW."""
     validate_nmc_pairs(
-        [NMCManifestPair(pair.valid_time, pair.f048, pair.f024) for pair in pairs],
+        [
+            NMCManifestPair(
+                pair.valid_time, pair.older, pair.newer,
+                older_lead_hours=pair.older_lead_hours,
+                newer_lead_hours=pair.newer_lead_hours,
+            )
+            for pair in pairs
+        ],
         minimum_pairs=minimum_pairs,
     )
 
@@ -22,9 +30,18 @@ def link_pair_inputs(workspace: Path, pairs: list[BflowPair]) -> None:
     inputs = workspace / "inputs"
     for pair in pairs:
         vdir = inputs / compact_time(pair.valid_time)
-        symlink_force(pair.f048, vdir / "f048.nc")
-        symlink_force(pair.f024, vdir / "f024.nc")
-        write_text(vdir / "pair.env", f"VALID_TIME={pair.valid_time}\nF048={pair.f048}\nF024={pair.f024}\n")
+        longer, shorter = pair.older_lead_hours, pair.newer_lead_hours
+        symlink_force(pair.older, vdir / f"f{longer:03d}.nc")
+        symlink_force(pair.newer, vdir / f"f{shorter:03d}.nc")
+        if (longer, shorter) == (48, 24):
+            text = f"VALID_TIME={pair.valid_time}\nF048={pair.older}\nF024={pair.newer}\n"
+        else:
+            text = (
+                f"VALID_TIME={pair.valid_time}\n"
+                f"OLDER_LEAD_HOURS={longer}\nNEWER_LEAD_HOURS={shorter}\n"
+                f"OLDER_STATE={pair.older}\nNEWER_STATE={pair.newer}\n"
+            )
+        write_text(vdir / "pair.env", text)
 
 
 def write_readme(workspace: Path, pairs: list[BflowPair]) -> None:
@@ -37,7 +54,11 @@ def write_readme(workspace: Path, pairs: list[BflowPair]) -> None:
         "",
     ]
     for pair in pairs:
-        lines.extend([f"- `{pair.valid_time}`", f"  - f048: `{pair.f048}`", f"  - f024: `{pair.f024}`"])
+        lines.extend([
+            f"- `{pair.valid_time}`",
+            f"  - older ({pair.older_lead_hours}h): `{pair.older}`",
+            f"  - newer ({pair.newer_lead_hours}h): `{pair.newer}`",
+        ])
     lines.extend(
         [
             "",
@@ -74,7 +95,15 @@ def prepare_workspace(
             workspace=str(workspace.resolve()),
             inputs={"pair_manifest": str((workspace / "manifest.tsv").resolve())},
             outputs={"output_root": str((workspace / "output").resolve())},
-            metadata={"members": len(pairs), "valid_times": [pair.valid_time for pair in pairs]},
+            metadata={
+                "members": len(pairs),
+                "valid_times": [pair.valid_time for pair in pairs],
+                "older_lead_hours": pairs[0].older_lead_hours,
+                "newer_lead_hours": pairs[0].newer_lead_hours,
+                "input_manifest_sha256": hashlib.sha256(
+                    (workspace / "manifest.tsv").read_bytes()
+                ).hexdigest(),
+            },
             status="prepared",
         )
     )
