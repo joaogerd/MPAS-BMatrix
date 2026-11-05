@@ -6,7 +6,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs, configured_mpi_ranks
 from ..scientific_config import (
     bflow_sample_stem,
     normalize_control,
@@ -102,7 +102,7 @@ def write_vbal_yaml(config: Mapping[str, Any], path: str | Path, nmembers: int, 
 def write_vbal_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
     """Write the standard PBS script for one VBAL calibration job."""
     directory = Path(run_dir)
-    ranks = int(config["mesh"].get("nproc", config.get("pbs", {}).get("nproc", 1)))
+    ranks = configured_mpi_ranks(config)
     spec = bmatrix_job_spec(
         config,
         name="mpasjediBTrainingVBAL",
