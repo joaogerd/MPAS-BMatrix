@@ -1,6 +1,10 @@
 """Versioned forecast leads survive BFLOW input staging and reload."""
 from pathlib import Path
 
+import pytest
+from bmatrix.bflow_core.model import nmc_leads
+from bmatrix.errors import ConfigurationError
+
 from bmatrix.bflow_core.manifest import read_manifest, write_manifest
 from bmatrix.bflow_core.model import BflowPair
 from bmatrix.bflow_core.workspace import link_pair_inputs, validate_pairs
@@ -40,3 +44,12 @@ def test_v1_manifest_remains_byte_compatible(tmp_path: Path) -> None:
     ])
     assert manifest.read_text().splitlines()[0] == "valid_time\tf048\tf024"
     assert read_manifest(manifest)[0].older_lead_hours == 48
+
+
+@pytest.mark.parametrize("invalid", [12.5, True, "12", -1, 0, None])
+def test_nmc_leads_cannot_be_silently_coerced_to_integer(invalid):
+    case = {"bflow": {"nmc": {
+        "older_lead_hours": 36, "newer_lead_hours": invalid
+    }}}
+    with pytest.raises(ConfigurationError, match="older_lead_hours"):
+        nmc_leads(case)
