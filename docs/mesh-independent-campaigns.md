@@ -48,3 +48,18 @@ case choices, not settings automatically inferred from the new mesh name.
 Before a long campaign, validate one MPASWF pair and run BMatrix scientific
 preflight with the matching case YAML and manifest. Then validate the generated
 covariance products on JACI. Unit/staging tests do not execute MPAS or SABER.
+
+
+## Named-dimension wind transforms
+
+The BFLOW windspharm adapter now reads and writes model winds according to
+NetCDF dimension names, not fixed positional indices. Forecast wind inputs
+must provide `nCells`, `nVertLevels`, and an optional singleton `Time`
+axis, in any order. This makes 2, 5, 9, 55, or other supported level counts
+work with matching mesh/ESMF geometry without transposition assumptions.
+
+A forecast file with multiple time records, an edge-defined wind without a
+cell-grid remapping, or inconsistent vertical/cell counts is rejected with an
+explanation before calculating the transformed field. Such layouts require
+an explicitly implemented scientific adapter, not a silent first-record
+selection.
