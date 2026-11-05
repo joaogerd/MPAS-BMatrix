@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
 from bmatrix.errors import ConfigurationError
 from bmatrix.pipeline import BuildRequest, _pairs_from_request
@@ -87,3 +88,25 @@ def test_nicas_impulse_requires_real_level_choice(tmp_path: Path):
     with pytest.raises(ValueError, match="dirac_level_from_top"):
         write_nicas_yaml(config, tmp_path / "nicas.yaml", "surface_pressure",
                          "2027-01-01T00:00:00Z", 12)
+
+
+def test_nicas_2d_level_comes_from_controls_not_variable_name(tmp_path: Path):
+    config = _case(tmp_path)
+    config["controls"] = [
+        {"code": "soil", "file": "custom_soil", "dimensions": "2d"},
+        {"code": "thermal", "file": "temperature", "dimensions": "3d"},
+    ]
+    config["nicas"] = {
+        "dirac_level_from_top": 4,
+        "dirac_points": [
+            {"longitude": -55.0, "latitude": -12.0, "variable": "soil"},
+            {"longitude": -55.0, "latitude": -12.0, "variable": "thermal"},
+        ],
+    }
+    for variable, expected in (("custom_soil", 1), ("temperature", 9)):
+        filename = tmp_path / f"{variable}.yaml"
+        write_nicas_yaml(config, filename, variable, "2027-01-01T00:00:00Z", 12)
+        payload = yaml.safe_load(filename.read_text())
+        points = payload["background error"]["saber central block"]["calibration"]["dirac"]
+        assert len(points) == 1
+        assert points[0]["level"] == expected
