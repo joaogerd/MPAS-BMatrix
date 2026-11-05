@@ -54,8 +54,8 @@ def test_manifest_rejects_lead_definitions_that_disagree_with_f048_f024(tmp_path
     config = _case(tmp_path)
     manifest = tmp_path / "pairs.tsv"
     manifest.write_text(
-        "valid_time\\tf048_state\\tf024_state\\n"
-        "2027-01-01_00:00:00\\t/older/state.nc\\t/newer/state.nc\\n"
+        "valid_time\tf048_state\tf024_state\n"
+        "2027-01-01_00:00:00\t/older/state.nc\t/newer/state.nc\n"
     )
     config["bflow"]["nmc"]["older_lead_hours"] = 72
     with pytest.raises(ConfigurationError, match="outro par"):
