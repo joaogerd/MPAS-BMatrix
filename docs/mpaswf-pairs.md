@@ -345,3 +345,15 @@ workspace.
 
 This is still the v1 NMC contract: the producer manifest has f048/f024
 products. Other lead pairs require a versioned producer-consumer change.
+
+
+## Scientific dimension validation during NMC differencing
+
+Before writing a perturbation, BFLOW compares the names, sizes and numeric
+representations of every common scientific field in the older and newer
+forecast states. Char-valued time/metadata variables are not perturbations.
+A numeric field that exists in both forecasts but has a different mesh,
+number of vertical levels, axis order or numeric/non-numeric type now fails
+with the field name and dimensions rather than being silently omitted.
+This check complements the canonical mesh preflight and prevents accidental
+calibration from incomplete NMC perturbation samples.
