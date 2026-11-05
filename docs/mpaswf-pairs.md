@@ -301,3 +301,47 @@ Equal `nVertLevels` proves only vertical array compatibility. The case's authori
 When an NMC `da_state` itself contains `zgrid`, it is compared directly with the invariant and the report records a direct proof. When the DA stream does not publish `zgrid`, the report deliberately records the weaker proof `case-invariant-plus-level-count`: the state has the configured number of levels, while vertical-coordinate identity comes from the case invariant. This distinction prevents the validation report from claiming evidence that is absent from the state file.
 
 A future 100+ level MONAN configuration therefore requires no code change: provide the corresponding `mesh.nvertlevels` and compatible `static.invariant`; its own `zgrid` fingerprint becomes the vertical identity.
+
+## Forecast discovery: producer manifest first
+
+Use `mpas-bmatrix build --config case.yaml --manifest /path/manifest.tsv`
+for MPASWF-generated input forecasts. This is the supported, versioned
+producer-consumer interface. MPAS-BMatrix does not need to know the MPASWF
+scheduler, output workspace, or naming convention.
+
+If a standalone source does not produce manifests, date-range builds may
+use an **explicit case-level path template**:
+
+```yaml
+bflow:
+  forecast_state_template: "/my/archive/{mesh_name}/{init_compact}/f{lead_padded}/state_dt{dt}.nc"
+```
+
+Supported placeholders:
+
+| Key | Meaning |
+| --- | --- |
+| `mesh_name` | `mesh.name` |
+| `nproc` | selected `mesh.nproc` |
+| `dt` | `--dt` or `runtime.config_dt`, seconds |
+| `lead_hours` / `lead_padded` | lead in hours, integer / zero-padded 3 digit string |
+| `init_time` | `YYYY-MM-DD_HH:MM:SS` |
+| `init_compact` | `YYYYMMDDHH` |
+| `init_date_file` | `YYYY-MM-DD_HH.MM.SS` |
+| `valid_time` | `YYYY-MM-DD_HH:MM:SS` |
+| `valid_compact` | `YYYYMMDDHH` |
+| `valid_date_file` | `YYYY-MM-DD_HH.MM.SS` |
+
+Relative templates are based at `project.work_root`. Without a manifest or
+this explicitly selected filename pattern, the application stops with an
+actionable error. It does **not** guess an original tutorial directory.
+
+Automatic BFLOW workspace paths now always include the mesh identifier.
+For a supplied manifest they also contain a short SHA-256 fingerprint of the
+manifest *contents*; campaigns sharing start/end dates but different
+intermediate inputs therefore do not silently reuse one workspace. Selecting
+`--bflow-workspace` explicitly retains responsibility for isolating that
+workspace.
+
+This is still the v1 NMC contract: the producer manifest has f048/f024
+products. Other lead pairs require a versioned producer-consumer change.
