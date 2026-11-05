@@ -6,6 +6,7 @@ import pytest
 import yaml
 
 from bmatrix.errors import ConfigurationError
+from bmatrix.config import validate_config_shape
 from bmatrix.pipeline import BuildRequest, _pairs_from_request
 from bmatrix.scheduler import configured_mpi_ranks
 from bmatrix.scientific_config import vbal_dominant_mode
@@ -110,3 +111,13 @@ def test_nicas_2d_level_comes_from_controls_not_variable_name(tmp_path: Path):
         points = payload["background error"]["saber central block"]["calibration"]["dirac"]
         assert len(points) == 1
         assert points[0]["level"] == expected
+
+
+def test_nondefault_covariance_output_prefix_is_rejected_until_pipeline_is_generic(tmp_path: Path):
+    config = _case(tmp_path)
+    config["mesh"]["grid"] = "mesh.nc"
+    config["bflow"]["regridding"] = {}
+    config["bflow"]["wind_transform"] = {}
+    config["vbal"]["files_prefix"] = "regional"
+    with pytest.raises(ConfigurationError, match="files_prefix"):
+        validate_config_shape(config)
