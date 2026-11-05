@@ -164,7 +164,7 @@ MAIN_FUNCTIONAL_DIRAC_KEYS = {"ndir", "dirLats", "dirLons", "ildir", "dirvar"}
 
 def _config() -> dict[str, object]:
     return {
-        "mesh": {"name": "x1.test", "nproc": 4},
+        "mesh": {"name": "x1.test", "nproc": 4, "nvertlevels": 55},
         "project": {"work_root": "/workspace/work"},
         "install": {"root": "/workspace/install"},
         "bflow": {
@@ -184,6 +184,7 @@ def _config() -> dict[str, object]:
         ],
         "vbal": {
             "files_prefix": "mpas",
+            "dominant_mode": 20,
             "group_variable_order": [
                 "air_horizontal_streamfunction",
                 "water_vapor_mixing_ratio_wrt_moist_air",
