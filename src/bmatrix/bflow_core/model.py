@@ -99,16 +99,20 @@ def default_workspace(config: Mapping[str, object], start_valid_time: str, end_v
         raise ConfigurationError("mesh.nproc must be positive.")
     # Include the mesh (or an explicit case id) so different experiments with
     # the same MPI count and time window cannot silently reuse one workspace.
-    case_id = project.get("case_id") or mesh.get("name")
-    if not isinstance(case_id, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", case_id):
-        raise ConfigurationError(
-            "Set mesh.name or project.case_id to a non-empty filename-safe case identifier."
-        )
+    mesh_name = mesh.get("name")
+    case_id = project.get("case_id")
+    if not isinstance(mesh_name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", mesh_name):
+        raise ConfigurationError("Declare mesh.name como identificador seguro de arquivo.")
+    if case_id is not None and (
+        not isinstance(case_id, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", case_id)
+    ):
+        raise ConfigurationError("project.case_id deve ser um identificador simples e não vazio.")
+    case_suffix = f"_case-{case_id}" if case_id else ""
     return (
         Path(str(project["work_root"]))
         / "bmatrix"
         / "bflow_preprocessing"
-        / f"np{nproc}_{compact_time(start_valid_time)}_{compact_time(end_valid_time)}_case-{case_id}"
+        / f"np{nproc}_{compact_time(start_valid_time)}_{compact_time(end_valid_time)}_mesh-{mesh_name}{case_suffix}"
     )
 
 
