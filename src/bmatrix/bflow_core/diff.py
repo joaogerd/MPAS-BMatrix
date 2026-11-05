@@ -8,6 +8,7 @@ import netCDF4
 import numpy as np
 
 from .model import BflowPair, compact_time, product_name
+from ..errors import ArtifactError
 from .netcdf_utils import CDF5_FORMAT, copy_attrs
 
 
@@ -28,8 +29,23 @@ def diff_file(f48: Path, f24: Path, output: Path, valid_time: str) -> None:
         dst.setncattr("source_newer", str(f24))
         for name in (name for name in ds48.variables if name in ds24.variables):
             older, newer = ds48.variables[name], ds24.variables[name]
-            if older.dimensions != newer.dimensions or not np.issubdtype(older.dtype, np.number):
+            older_numeric = np.issubdtype(older.dtype, np.number)
+            newer_numeric = np.issubdtype(newer.dtype, np.number)
+            if not older_numeric and not newer_numeric:
+                # MPAS char arrays such as xtime are metadata, not perturbations.
                 continue
+            if older_numeric != newer_numeric:
+                raise ArtifactError(
+                    f"Os forecasts NMC possuem tipos incompatíveis na variável {name!r}: "
+                    f"{older.dtype} e {newer.dtype}. Verifique os arquivos de entrada."
+                )
+            if older.dimensions != newer.dimensions or older.shape != newer.shape:
+                raise ArtifactError(
+                    f"Os forecasts NMC possuem dimensões incompatíveis em {name!r}: "
+                    f"mais antigo {older.dimensions} {older.shape}, "
+                    f"mais recente {newer.dimensions} {newer.shape}. "
+                    "As previsões devem usar a mesma malha e os mesmos níveis."
+                )
             kwargs: dict[str, object] = {}
             fill_value = getattr(older, "_FillValue", None)
             if fill_value is not None:
