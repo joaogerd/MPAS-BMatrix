@@ -33,6 +33,15 @@ def validate_pairs(pairs: list[NMCManifestPair], *, minimum_pairs: int = MINIMUM
             f"NMC manifest contains {len(pairs)} pair(s), but B-matrix calibration requires at least {minimum_pairs}."
         )
 
+    leads = {(pair.older_lead_hours, pair.newer_lead_hours) for pair in pairs}
+    if len(leads) != 1 or any(
+        newer < 1 or older <= newer for older, newer in leads
+    ):
+        raise ManifestError(
+            "O manifesto reúne leads NMC inconsistentes. "
+            "Todos os pares precisam utilizar o mesmo forecast mais antigo "
+            "e mais recente, ambos em horas positivas."
+        )
     previous = None
     seen: set[str] = set()
     records = []
@@ -42,15 +51,23 @@ def validate_pairs(pairs: list[NMCManifestPair], *, minimum_pairs: int = MINIMUM
             raise ManifestError(f"Duplicate NMC valid_time: {pair.valid_time}")
         if previous is not None and parsed <= previous:
             raise ManifestError("NMC manifest valid_time values must be strictly increasing.")
-        if pair.f048.resolve() == pair.f024.resolve():
-            raise ManifestError(f"f048 and f024 resolve to the same file for {pair.valid_time}.")
-        records.append(
-            {
-                "valid_time": pair.valid_time,
-                "f048": _require_product(pair.f048, f"f048 for {pair.valid_time}"),
-                "f024": _require_product(pair.f024, f"f024 for {pair.valid_time}"),
-            }
-        )
+        if pair.older.resolve() == pair.newer.resolve():
+            raise ManifestError(
+                f"As previsões NMC mais antiga e mais recente usam o mesmo arquivo "
+                f"no horário {pair.valid_time}."
+            )
+        legacy = pair.leads_hours == (48, 24)
+        records.append({
+            "valid_time": pair.valid_time,
+            "older_lead_hours": pair.older_lead_hours,
+            "newer_lead_hours": pair.newer_lead_hours,
+            "f048" if legacy else "older": _require_product(
+                pair.older, f"older forecast ({pair.older_lead_hours}h) for {pair.valid_time}"
+            ),
+            "f024" if legacy else "newer": _require_product(
+                pair.newer, f"newer forecast ({pair.newer_lead_hours}h) for {pair.valid_time}"
+            ),
+        })
         seen.add(pair.valid_time)
         previous = parsed
     return {"valid": True, "minimum_pairs": minimum_pairs, "pairs": records}
