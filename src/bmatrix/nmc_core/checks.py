@@ -73,10 +73,18 @@ def validate_pairs(pairs: list[NMCManifestPair], *, minimum_pairs: int = MINIMUM
     return {"valid": True, "minimum_pairs": minimum_pairs, "pairs": records}
 
 
-def _validate_contract_sidecar(path: Path, pair_count: int) -> dict[str, object] | None:
-    """Validate the optional versioned mpaswf producer contract."""
+def _validate_contract_sidecar(
+    path: Path, pair_count: int, leads: tuple[int, int] = (48, 24)
+) -> dict[str, object] | None:
+    """Validate a content-bound producer/consumer contract for NMC v1 or v2."""
     sidecar = path.with_suffix(".json")
     if not sidecar.is_file():
+        if leads != (48, 24):
+            raise ManifestError(
+                f"O manifesto NMC de leads {leads[0]}/{leads[1]} horas precisa "
+                f"do contrato versionado {sidecar}. Solicite ao produtor dos "
+                "forecasts que gere o sidecar JSON com o SHA-256 do manifesto."
+            )
         return None
     try:
         payload = json.loads(sidecar.read_text(encoding="utf-8"))
@@ -84,16 +92,32 @@ def _validate_contract_sidecar(path: Path, pair_count: int) -> dict[str, object]
         raise ManifestError(f"Invalid NMC contract sidecar {sidecar}: {exc}") from exc
     if not isinstance(payload, dict):
         raise ManifestError(f"NMC contract sidecar must contain a JSON object: {sidecar}")
+    legacy = leads == (48, 24)
+    fields = (
+        ["valid_time", "f048_state", "f024_state", "f048_restart", "f024_restart"]
+        if legacy else [
+            "valid_time", "older_lead_hours", "newer_lead_hours",
+            "older_state", "newer_state", "older_restart", "newer_restart",
+        ]
+    )
     expected = {
-        "schema_version": 1,
-        "contract": "monan-nmc-forecast-pairs-v1",
-        "producer": "mpaswf",
+        "schema_version": 1 if legacy else 2,
+        "contract": "monan-nmc-forecast-pairs-v1" if legacy else "monan-nmc-forecast-pairs-v2",
         "consumer": "MPAS-BMatrix",
         "manifest": path.name,
         "manifest_format": "tsv",
-        "columns": ["valid_time", "f048_state", "f024_state", "f048_restart", "f024_restart"],
+        "columns": fields,
         "pair_count": pair_count,
     }
+    if legacy:
+        expected["producer"] = "mpaswf"
+    else:
+        expected["leads_hours"] = {"older": leads[0], "newer": leads[1]}
+        producer = payload.get("producer")
+        if not isinstance(producer, str) or not producer.strip():
+            raise ManifestError(
+                f"O contrato NMC v2 {sidecar} deve identificar o produtor dos forecasts."
+            )
     for key, value in expected.items():
         if payload.get(key) != value:
             raise ManifestError(
@@ -102,7 +126,7 @@ def _validate_contract_sidecar(path: Path, pair_count: int) -> dict[str, object]
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     if payload.get("manifest_sha256") != digest:
         raise ManifestError(
-            f"NMC contract sidecar SHA-256 does not match manifest {path}; regenerate the mpaswf manifest."
+            f"NMC contract sidecar SHA-256 does not match manifest {path}; regenerate the manifest."
         )
     return {
         "path": str(sidecar.resolve()),
@@ -110,8 +134,8 @@ def _validate_contract_sidecar(path: Path, pair_count: int) -> dict[str, object]
         "schema_version": payload["schema_version"],
         "producer": payload["producer"],
         "verified_sha256": digest,
+        "leads_hours": {"older": leads[0], "newer": leads[1]},
     }
-
 
 
 def _required_bflow_input_variables(config: Mapping[str, object]) -> tuple[str, ...]:
@@ -437,7 +461,7 @@ def validate_manifest(
     report = validate_pairs(pairs, minimum_pairs=minimum_pairs)
     report["manifest"] = str(path.resolve())
     report["pair_count"] = len(pairs)
-    contract = _validate_contract_sidecar(path, len(pairs))
+    contract = _validate_contract_sidecar(path, len(pairs), pairs[0].leads_hours)
     report["producer_contract"] = contract
     report["producer_contract_verified"] = contract is not None
     if config is not None:
