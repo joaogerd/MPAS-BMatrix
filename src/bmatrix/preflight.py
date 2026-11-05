@@ -262,6 +262,7 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
             ("vbal.sampling.reduced levels", "vbal", "sampling", "reduced levels"),
             ("hdiag.sampling.reduced levels", "hdiag", "sampling", "reduced levels"),
             ("nicas.dirac_level_from_top", "nicas", None, "dirac_level_from_top"),
+            ("vbal.dominant_mode", "vbal", None, "dominant_mode"),
         )
         for field, stage, subkey, leaf in level_fields:
             section = _mapping(config, stage)
@@ -280,6 +281,23 @@ def check_config_resources(config: Mapping[str, object]) -> list[ResourceCheck]:
                 checks.append(ResourceCheck(
                     field, str(candidate), "vertical level selection", "OK", True
                 ))
+
+        vbal_section = _mapping(config, "vbal")
+        if vbal_section and "dominant_mode" not in vbal_section:
+            checks.append(ResourceCheck(
+                "vbal.dominant_mode", "<unset>", "vertical mode count",
+                "NOT_CONFIGURED", False,
+                "Declare vbal.dominant_mode explicitly in the scientific YAML "
+                "and choose a value compatible with mesh.nvertlevels."
+            ))
+        nicas_section = _mapping(config, "nicas")
+        if nicas_section.get("dirac_points") and "dirac_level_from_top" not in nicas_section:
+            checks.append(ResourceCheck(
+                "nicas.dirac_level_from_top", "<unset>", "model level",
+                "NOT_CONFIGURED", False,
+                "Declare nicas.dirac_level_from_top for the selected vertical grid "
+                "when nicas.dirac_points are configured."
+            ))
 
     static = _mapping(config, "static")
     for key in ("invariant", "geovars", "keptvars"):
