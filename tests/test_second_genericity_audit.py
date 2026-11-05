@@ -122,3 +122,29 @@ def test_nondefault_covariance_output_prefix_is_rejected_until_pipeline_is_gener
     config["vbal"]["files_prefix"] = "regional"
     with pytest.raises(ConfigurationError, match="files_prefix"):
         validate_config_shape(config)
+
+
+def test_date_range_without_source_template_fails_without_guessing(tmp_path: Path):
+    config = _case(tmp_path)
+    config['bflow'].pop('forecast_state_template')
+    request = BuildRequest(start_valid_time='2027-01-01_00:00:00',
+                           end_valid_time='2027-01-02_00:00:00', dt=135)
+    with pytest.raises(ConfigurationError, match='forecast_state_template'):
+        _pairs_from_request(config, request)
+
+
+def test_same_case_and_window_are_isolated_by_manifest_content(tmp_path: Path):
+    config = _case(tmp_path)
+    a = tmp_path / 'a.tsv'
+    b = tmp_path / 'b.tsv'
+    heading = 'valid_time\tf048_state\tf024_state\n'
+    a.write_text(heading + '2027-01-01_00:00:00\t/old/a.nc\t/new/a.nc\n'
+                 + '2027-01-02_00:00:00\t/old/b.nc\t/new/b.nc\n')
+    b.write_text(heading + '2027-01-01_00:00:00\t/old/a.nc\t/new/a.nc\n'
+                 + '2027-01-02_00:00:00\t/old/c.nc\t/new/c.nc\n')
+    _, first = _pairs_from_request(config, BuildRequest(manifest=a))
+    _, second = _pairs_from_request(config, BuildRequest(manifest=b))
+    assert first != second
+    assert first.name.startswith('np96_2027010100_2027010200_mesh-regional.mesh')
+    assert '_source-' in first.name
+    assert not first.exists() and not second.exists()
