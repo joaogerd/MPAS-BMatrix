@@ -76,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_command.add_argument("--skip-weights", action="store_true", help="Exige pesos ESMF existentes sem regenerá-los.")
     build_command.add_argument("--poll-seconds", type=int, default=30)
     build_command.add_argument("--nicas-parallel", action="store_true", help="Submete controles NICAS em paralelo com merge afterok.")
-    build_command.add_argument("--so-variant", default="default", choices=("default", "t-only", "u-only"))
+    build_command.add_argument("--so-variant", default="default", help="Nome definido em single_observation.variants do YAML científico.")
     _add_plot_options(build_command)
     build_command.add_argument("--dry-run", action="store_true", help="Mostra o plano sem criar arquivos ou submeter jobs.")
     build_command.set_defaults(handler=_build)
@@ -85,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(validate_command)
     _add_pair_source(validate_command)
     validate_command.add_argument("--stage", required=True, choices=STAGES)
-    validate_command.add_argument("--so-variant", default="default", choices=("default", "t-only", "u-only"))
+    validate_command.add_argument("--so-variant", default="default", help="Nome definido em single_observation.variants do YAML científico.")
     validate_command.set_defaults(handler=_validate)
 
     plots = sub.add_parser("plots", help="Gera figuras e resumos dos produtos finais da matriz B.")

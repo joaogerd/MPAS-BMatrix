@@ -14,6 +14,7 @@ from ..scientific_config import require_background_covers_analysis, section
 from ..shell import require_file, write_text
 from ..vbal_core.validate import validate as validate_vbal
 from .config_files import write_so_pbs, write_so_t_only_diagnostic_pbs, write_so_yaml
+from .checks import MPAS_ANALYSIS_VARIABLES
 from .model import so_artifacts, so_workspace
 from .static import create_so_background, link_so_support
 
@@ -55,6 +56,14 @@ def prepare(
         single.get("analysis_variables", []),
         "single_observation",
     )
+    native_fields = single.get("validation_native_analysis_fields", MPAS_ANALYSIS_VARIABLES)
+    if not isinstance(native_fields, list) or not all(
+        isinstance(name, str) and name.strip() for name in native_fields
+    ):
+        raise ValueError(
+            "single_observation.validation_native_analysis_fields deve listar "
+            "os nomes nativos MPAS esperados no arquivo de análise."
+        )
     create_so_background(template, output / "bg_so.nc", background_variables)
     write_so_yaml(config, output / artifacts["yaml"], hdiag_date(hdiag_root), products.nicas.parent, products.stddev, products.vbal.parent, variant=variant)
     write_so_pbs(config, output, variant=variant)
@@ -68,7 +77,7 @@ def prepare(
             workspace=str(output.resolve()),
             inputs={"nicas_workspace": str(nicas_root.resolve()), "hdiag_workspace": str(hdiag_root.resolve()), "vbal_workspace": str(vbal_root.resolve())},
             outputs={"background": str((output / "bg_so.nc").resolve()), "yaml": str((output / artifacts["yaml"]).resolve())},
-            metadata={"variant": variant},
+            metadata={"variant": variant, "required_native_analysis_fields": native_fields},
             status="prepared",
         )
     )

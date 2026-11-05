@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ..nicas_core.checks import home_failure_files
 from ..shell import qsub, wait_for_pbs_job, write_text
-from .checks import check
+from .checks import check, expected_observation_files
 from .model import so_artifacts
 
 
@@ -14,8 +14,7 @@ def clean_outputs(run_dir: Path, variant: str = "default") -> None:
         artifacts["runlog"],
         artifacts["stdout"],
         artifacts["stderr"],
-        "obsout_SO_T.h5",
-        "obsout_SO_U.h5",
+        *expected_observation_files(run_dir, variant),
     ]:
         (run_dir / name).unlink(missing_ok=True)
     for path in run_dir.glob("an.*.nc"):

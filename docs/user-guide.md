@@ -449,3 +449,40 @@ validation result
 
 The end-to-end colleague test template is available in
 [`end-to-end-tutorial.md`](end-to-end-tutorial.md).
+
+
+## Single-observation (SO) case-derived products
+
+The SO stage reads `single_observation.variants` and
+`single_observation.observations` from the selected case. A variant may
+have any filename-safe lowercase name; it is **not** limited to the original
+temperature and wind examples.
+
+The SO validator reads the generated `run_SO*.yaml` and validates exactly
+the observation output files actually configured there. Cleanup likewise
+removes only products owned by that selected variant, never a hard-coded
+tutorial-specific pair.
+
+By default the native analysis output is checked for the established MPAS
+field subset (zonal and meridional reconstructed winds, potential
+temperature, water-vapor mixing ratio and surface pressure). If the
+installed MPAS stream and experiment intentionally produce a different
+native analysis subset, the following case-level validation policy is
+available:
+
+```yaml
+single_observation:
+  validation_native_analysis_fields:
+    - theta
+    - surface_pressure
+```
+
+This setting is appropriate only when justified by the selected MPAS output
+stream. The names cannot in general be inferred safely from JEDI analysis
+aliases, so this exception is explicit rather than guessed. The chosen
+fields are recorded in the SO stage manifest; previously generated stage
+manifests retain the legacy field validation.
+
+A missing, malformed or path-escaping observation output declared in the
+generated YAML is reported as a configuration problem instead of silently
+falling back to the original temperature/wind filenames.
