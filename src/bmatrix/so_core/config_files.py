@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs, configured_mpi_ranks
 from ..scientific_config import (
     control_aliases,
     control_code_names,
@@ -203,7 +203,7 @@ def write_so_pbs(config: Mapping[str, Any], run_dir: str | Path, variant: str = 
     """Write the standard PBS job for a selected SO variant."""
     directory = Path(run_dir)
     artifacts = so_artifacts(variant)
-    ranks = int(config["mesh"].get("nproc", config.get("pbs", {}).get("nproc", 1)))
+    ranks = configured_mpi_ranks(config)
     spec = bmatrix_job_spec(
         config,
         name=f"SO_{variant}",
