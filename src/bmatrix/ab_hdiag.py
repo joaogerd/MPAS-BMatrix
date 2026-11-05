@@ -378,7 +378,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--clean", action="store_true", help="Explicitly recreate the selected A/B workspace.")
     parser.add_argument("--poll-seconds", type=int, default=30)
     parser.add_argument("--nicas-parallel", action="store_true", help="Submit NICAS variables in parallel for both A/B paths.")
-    parser.add_argument("--so-variant", default="default", choices=("default", "t-only", "u-only"))
+    parser.add_argument("--so-variant", default="default", help="Variante de observação definida no YAML científico.")
     parser.add_argument("--rtol", type=float, default=1.0e-6)
     parser.add_argument("--atol", type=float, default=1.0e-8)
     return parser
