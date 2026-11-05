@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal, Mapping
 
 from .bflow_core.manifest import read_manifest
-from .bflow_core.model import BflowPair, build_pairs_from_range, default_workspace
+from .bflow_core.model import BflowPair, build_pairs_from_range, default_workspace, nmc_leads
 from .bflow_core.runner import run_bflow_pipeline
 from .bflow_core.weights import generate_esmf_weights
 from .bflow_core.workspace import prepare_workspace as prepare_bflow
@@ -142,6 +142,14 @@ class PipelinePlan:
 
 def _pairs_from_request(config: Mapping[str, object], request: BuildRequest) -> tuple[list[BflowPair], Path]:
     if request.manifest:
+        older, newer = nmc_leads(config)
+        if (older, newer) != (48, 24):
+            raise ConfigurationError(
+                "O manifesto NMC atual contém previsões f048/f024, mas o YAML declara "
+                f"bflow.nmc = {older}/{newer} horas. Corrija "
+                "bflow.nmc.older_lead_hours e bflow.nmc.newer_lead_hours para 48/24 "
+                "ou utilize um contrato de manifesto versionado compatível com outros leads."
+            )
         pairs = read_manifest(request.manifest)
         if not pairs:
             raise WorkflowError("Manifesto BFLOW/NMC não contém pares.")
