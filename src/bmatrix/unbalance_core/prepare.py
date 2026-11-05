@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ..artifacts import StageManifest, read_manifest, write_manifest
 from ..shell import write_text
+from ..scheduler import configured_mpi_ranks
 from ..vbal_core.validate import validate as validate_vbal
 from .config_files import write_unbalance_pbs, write_unbalance_yaml
 from .model import unbalance_exe, unbalance_workspace, vbal_date
@@ -46,7 +47,7 @@ def prepare(config, vbal_workspace_path: str | Path, workspace: str | Path | Non
     link_unbalance_inputs(vbal_root, out, run_dir)
     date = vbal_date(vbal_root)
     exe = unbalance_exe(config)
-    ranks = int(config["mesh"].get("nproc", config.get("pbs", {}).get("nproc", 1)))
+    ranks = configured_mpi_ranks(config)
     config_path = str(config.get("bmatrix_contract_path", ""))
     write_unbalance_yaml(config, run_dir / "run_unbalance.yaml", nmembers=len(samples), date=date)
     write_unbalance_pbs(config, run_dir)
