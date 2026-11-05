@@ -34,7 +34,12 @@ def expected_observation_files(run_dir: Path, variant: str = "default") -> list[
             "t-only": ["obsout_SO_T.h5"],
             "u-only": ["obsout_SO_U.h5"],
         }
-        return list(legacy.get(variant, ()))
+        if variant not in legacy:
+            raise ValueError(
+                f"Arquivo de configuração do teste SO não encontrado: {source}. "
+                "Prepare esta variante usando o YAML científico antes de validar."
+            )
+        return list(legacy[variant])
     try:
         document = yaml.safe_load(source.read_text(encoding="utf-8"))
         observers = document["observations"]["observers"]
