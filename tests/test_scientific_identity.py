@@ -60,3 +60,34 @@ def test_matching_identity_is_accepted(tmp_path):
         metadata={"scientific_identity": identity},
     )
     require_scientific_identity(manifest, identity)
+
+
+def test_same_mesh_different_science_has_different_identity(tmp_path):
+    config = _config(tmp_path / "same", 0.0)
+    config["vbal"] = {"dominant_mode": 1}
+    first = scientific_identity(config)
+    config["vbal"]["dominant_mode"] = 2
+    second = scientific_identity(config)
+    assert first["horizontal_geometry_sha256"] == second["horizontal_geometry_sha256"]
+    assert first["vertical_geometry_sha256"] == second["vertical_geometry_sha256"]
+    assert first["scientific_settings_sha256"] != second["scientific_settings_sha256"]
+    manifest = StageManifest(
+        stage="vbal", workspace=str(tmp_path),
+        metadata={"scientific_identity": first},
+    )
+    with pytest.raises(ArtifactError, match="Scientific identity mismatch"):
+        require_scientific_identity(manifest, second)
+
+
+def test_old_geometry_only_artifact_remains_compatible_with_warning(tmp_path):
+    config = _config(tmp_path / "old", 0.0)
+    current = scientific_identity(config)
+    legacy = {key: value for key, value in current.items()
+              if key != "scientific_settings_sha256"}
+    legacy["schema_version"] = 1
+    manifest = StageManifest(
+        stage="vbal", workspace=str(tmp_path),
+        metadata={"scientific_identity": legacy},
+    )
+    with pytest.warns(FutureWarning, match="geometry-only"):
+        require_scientific_identity(manifest, current)
