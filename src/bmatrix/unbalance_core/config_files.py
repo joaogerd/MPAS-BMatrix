@@ -6,8 +6,8 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
-from ..scientific_config import bflow_sample_stem, ordered_control_file_names, section
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs, configured_mpi_ranks
+from ..scientific_config import bflow_sample_stem, ordered_control_file_names, section, vbal_dominant_mode
 from ..shell import write_text
 from ..vbal_core.config_files import render_vbal_relations
 from .model import unbalance_exe
@@ -70,7 +70,7 @@ def write_unbalance_yaml(config: Mapping[str, Any], path: str | Path, nmembers: 
                     "vertical balance": {
                         "vbal": render_vbal_relations(config),
                         "pseudo inverse": bool(vbal.get("pseudo_inverse", True)),
-                        "dominant mode": int(vbal.get("dominant_mode", 20)),
+                        "dominant mode": vbal_dominant_mode(config),
                     },
                 },
             }
@@ -87,7 +87,7 @@ def write_unbalance_yaml(config: Mapping[str, Any], path: str | Path, nmembers: 
 def write_unbalance_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
     """Write the PBS script for applying K2^-1 to the ensemble."""
     directory = Path(run_dir)
-    ranks = int(config["mesh"].get("nproc", config.get("pbs", {}).get("nproc", 1)))
+    ranks = configured_mpi_ranks(config)
     exe = unbalance_exe(config)
     spec = bmatrix_job_spec(
         config,

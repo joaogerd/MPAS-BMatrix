@@ -7,8 +7,8 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
-from ..scientific_config import control_file_names, normalize_control, section
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs, configured_mpi_ranks
+from ..scientific_config import control_file_names, normalize_control, section, controls
 from ..shell import write_text
 from ..vbal_core.model import toolbox_exe
 
@@ -41,8 +41,34 @@ def write_nicas_yaml(
 ) -> None:
     """Render one single-variable NICAS calibration input."""
     nicas = section(config, "nicas")
-    level_from_top = int(nicas.get("dirac_level_from_top", 20))
-    level = 1 if variable == "surface_pressure" else max(1, nvertlevels - level_from_top + 1)
+    if isinstance(nvertlevels, bool) or not isinstance(nvertlevels, int) or nvertlevels < 1:
+        raise ValueError("mesh.nvertlevels deve ser um inteiro positivo.")
+    raw_level = nicas.get("dirac_level_from_top")
+    if raw_level is None:
+        if nicas.get("dirac_points"):
+            raise ValueError(
+                "Configure nicas.dirac_level_from_top para os testes de impulso NICAS. "
+                "Escolha um nível válido para a malha; não existe nível padrão universal."
+            )
+        level_from_top = 1  # Unused if no impulse locations are configured.
+    else:
+        if isinstance(raw_level, bool) or not isinstance(raw_level, int) or not (1 <= raw_level <= nvertlevels):
+            raise ValueError(
+                f"nicas.dirac_level_from_top deve estar entre 1 e mesh.nvertlevels ({nvertlevels})."
+            )
+        level_from_top = raw_level
+    matched = [item for item in controls(config) if str(item["file"]) == variable]
+    if len(matched) != 1:
+        raise ValueError(
+            f"Declare o controle {variable!r} uma única vez em controls, incluindo dimensions: 2d ou 3d."
+        )
+    dimensions = str(matched[0].get("dimensions", "")).lower()
+    if dimensions not in {"2d", "3d"}:
+        raise ValueError(
+            f"Defina controls[].dimensions: 2d ou 3d para {variable!r}. "
+            "O nível NICAS depende das dimensões científicas, não do nome da variável."
+        )
+    level = 1 if dimensions == "2d" else nvertlevels - level_from_top + 1
     data = {
         "geometry": {
             "nml_file": "./namelist.atmosphere",
@@ -84,7 +110,7 @@ def write_nicas_yaml(
 def write_nicas_pbs(config: Mapping[str, Any], run_dir: str | Path, variable: str) -> None:
     """Write a consistent PBS job for a per-variable NICAS calibration."""
     directory = Path(run_dir)
-    ranks = int(config["mesh"].get("nproc", config.get("pbs", {}).get("nproc", 1)))
+    ranks = configured_mpi_ranks(config)
     spec = bmatrix_job_spec(
         config,
         name=f"NICAS_{variable}",
@@ -100,7 +126,7 @@ def write_nicas_merge_files(config: Mapping[str, Any], workspace: str | Path) ->
     merge_dir = root / "merge"
     merge_dir.mkdir(parents=True, exist_ok=True)
     variables = control_file_names(config)
-    ranks = int(config["mesh"].get("nproc", config.get("pbs", {}).get("nproc", 1)))
+    ranks = configured_mpi_ranks(config)
     padded = f"{ranks:06d}"
 
     for rank in range(1, ranks + 1):

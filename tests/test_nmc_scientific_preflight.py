@@ -36,7 +36,7 @@ def _invariant(tmp_path: Path, shift: float = 0.0) -> Path:
     return path
 
 def _config(mesh: Path):
-    return {"mesh":{"name":"x1.test","grid":str(mesh),"nvertlevels":2},"static":{"invariant":str(_invariant(mesh.parent))},"bflow":{"wind_transform":{"zonal_file_variable":"uReconstructZonal","meridional_file_variable":"uReconstructMeridional","template_file_variable":"theta"},"copy_variables":REQUIRED[1:],"derived_variables":[{"inputs":["pressure_p","pressure_base"],"template_file":"pressure_p"},{"theta_file":"theta","template_file":"theta"},{"mixing_ratio_file":"qv","template_file":"qv"}]}}
+    return {"mesh":{"name":"x1.test","grid":str(mesh),"nvertlevels":2},"static":{"invariant":str(_invariant(mesh.parent))},"bflow":{"nmc":{"older_lead_hours":48,"newer_lead_hours":24},"wind_transform":{"zonal_file_variable":"uReconstructZonal","meridional_file_variable":"uReconstructMeridional","template_file_variable":"theta"},"copy_variables":REQUIRED[1:],"derived_variables":[{"inputs":["pressure_p","pressure_base"],"template_file":"pressure_p"},{"theta_file":"theta","template_file":"theta"},{"mixing_ratio_file":"qv","template_file":"qv"}]}}
 
 def _canonical_mesh(tmp_path: Path) -> Path:
     path = tmp_path / "mesh.nc"
@@ -168,3 +168,10 @@ def test_mixed_campaign_does_not_claim_all_state_geometries_verified(tmp_path):
     assert contract["mesh_identity"]["state_geometry_verified"] is False
     assert contract["pairs"][0]["f048"]["mesh"]["state_geometry_verified"] is False
     assert contract["pairs"][0]["f024"]["mesh"]["state_geometry_verified"] is True
+
+
+def test_nmc_manifest_rejects_conflicting_lead_definitions(tmp_path):
+    config = _config(_canonical_mesh(tmp_path))
+    config["bflow"]["nmc"] = {"older_lead_hours": 72, "newer_lead_hours": 24}
+    with pytest.raises(ManifestError, match="f048/f024"):
+        validate_manifest(_manifest(tmp_path), config=config)

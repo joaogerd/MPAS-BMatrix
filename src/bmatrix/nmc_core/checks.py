@@ -11,6 +11,8 @@ import numpy as np
 import netCDF4
 
 from .manifest import ManifestError, read_manifest
+from ..bflow_core.model import nmc_leads
+from ..errors import ConfigurationError
 from .model import MINIMUM_PAIRS, NMCManifestPair, parse_time
 
 
@@ -331,6 +333,19 @@ def validate_scientific_pairs(
     pairs: list[NMCManifestPair], config: Mapping[str, object]
 ) -> dict[str, object]:
     """Validate NetCDF structure, valid time and pairwise mesh compatibility."""
+    try:
+        older, newer = nmc_leads(config)
+    except (ValueError, KeyError, TypeError, ConfigurationError) as exc:
+        raise ManifestError(
+            "Configure bflow.nmc.older_lead_hours e bflow.nmc.newer_lead_hours "
+            "no contrato científico para validar o manifesto NMC."
+        ) from exc
+    if (older, newer) != (48, 24):
+        raise ManifestError(
+            "O manifesto NMC v1 identifica previsões f048/f024, mas "
+            f"bflow.nmc declara {older}/{newer} horas. Corrija o YAML ou use "
+            "um contrato de manifesto versionado que represente esses leads."
+        )
     required = _required_bflow_input_variables(config)
     mesh_name, mesh_path, expected_nvertlevels = _mesh_contract(config)
     canonical_mesh = _mesh_geometry(mesh_path)

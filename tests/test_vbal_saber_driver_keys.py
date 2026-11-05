@@ -8,12 +8,14 @@ from bmatrix.vbal_core.config_files import write_vbal_yaml
 # The scientific configuration uses snake_case; SABER reads literal labels with spaces.
 def test_vbal_yaml_uses_saber_driver_labels(tmp_path):
     config = {
+        "mesh": {"name": "x1.test", "nvertlevels": 55},
         "controls": [
             {"code": "psi", "file": "stream_function"},
             {"code": "chi", "file": "velocity_potential"},
         ],
         "bflow": {"products": {"perturbation": "PTB_f48mf24.nc"}},
         "vbal": {
+            "dominant_mode": 20,
             "drivers": {
                 "write_local_sampling": True,
                 "write_global_sampling": True,

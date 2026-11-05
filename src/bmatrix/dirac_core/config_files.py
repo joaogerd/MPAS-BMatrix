@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs, configured_mpi_ranks
 from ..scientific_config import (
     control_aliases,
     control_code_names,
@@ -198,7 +198,7 @@ def write_dirac_yaml(
 def write_dirac_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
     """Write the standard PBS script for the full-B DIRAC toolbox diagnostic."""
     directory = Path(run_dir)
-    ranks = int(config["mesh"].get("nproc", config.get("pbs", {}).get("nproc", 1)))
+    ranks = configured_mpi_ranks(config)
     spec = bmatrix_job_spec(
         config,
         name="DiracTest",

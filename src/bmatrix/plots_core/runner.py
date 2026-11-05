@@ -92,7 +92,7 @@ def generate_plots(
     workspace: str | Path,
     *,
     clean: bool = False,
-    level: int = 30,
+    level: int | None = None,
     dpi: int = 150,
     variables: Sequence[str] | None = None,
 ) -> dict[str, Path]:
@@ -121,6 +121,20 @@ def generate_plots(
             raise FileNotFoundError(f"Produto obrigatório ausente para plots: {path}")
         with ctx.netcdf4.Dataset(path) as dataset:
             summary_rows.extend(_summarize_dataset(product_name, path, dataset, ctx=ctx))
+
+    if level is None:
+        # The standalone plotting API has no case YAML. Inspect actual product
+        # dimensions instead of assuming a tutorial-specific model level.
+        counts = []
+        for path in product_map.values():
+            with ctx.netcdf4.Dataset(path) as dataset:
+                if "nVertLevels" in dataset.dimensions:
+                    counts.append(len(dataset.dimensions["nVertLevels"]))
+        level = (counts[0] - 1) // 2 if counts else 0
+        if any(count != counts[0] for count in counts):
+            raise ValueError("Inconsistent vertical level counts in BMatrix diagnostic products.")
+    if isinstance(level, bool) or not isinstance(level, int) or level < 0:
+        raise ValueError("The plot level must be a non-negative integer.")
 
     figures.extend(_generate_presentation_figures(products, root, selected, level, dpi, ctx))
 

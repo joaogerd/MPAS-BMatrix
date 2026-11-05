@@ -70,6 +70,25 @@ def _configured_runtime_environment(environment: Mapping[str, object]) -> dict[s
     return result
 
 
+def configured_mpi_ranks(config: Mapping[str, object]) -> int:
+    """Require a positive model MPI rank count; never guess a decomposition."""
+    mesh = config.get("mesh")
+    if not isinstance(mesh, Mapping):
+        raise ValueError("O YAML precisa declarar o bloco mesh.")
+    raw = mesh.get("nproc")
+    if isinstance(raw, bool) or raw is None:
+        raise ValueError(
+            "Informe mesh.nproc com o número de processos MPI da partição da malha."
+        )
+    try:
+        ranks = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("mesh.nproc deve ser um inteiro positivo.") from exc
+    if ranks < 1 or (isinstance(raw, float) and not raw.is_integer()):
+        raise ValueError("mesh.nproc deve ser um inteiro positivo.")
+    return ranks
+
+
 def mpi_command(
     config: Mapping[str, object],
     mpi_ranks: int,
@@ -114,7 +133,7 @@ def bmatrix_job_spec(
         raise ValueError("Configuração de mesh/pbs inválida.")
     if not isinstance(project, Mapping) or not isinstance(environment, Mapping):
         raise ValueError("Configuração de project/environment inválida.")
-    ranks = int(mesh.get("nproc", pbs.get("nproc", 1)))
+    ranks = configured_mpi_ranks(config)
     queue = str(pbs.get("queues", {}).get("bmatrix", pbs.get("queue", ""))) or None
     walltime = str(pbs.get("walltime", {}).get("bmatrix", pbs.get("walltime_short", "00:10:00")))
     loader = str(environment["loader"])

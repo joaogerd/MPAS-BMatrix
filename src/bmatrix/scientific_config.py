@@ -181,6 +181,22 @@ def vbal_composite_aliases(config: Mapping[str, Any], order: object | None = Non
     return aliases
 
 
+def vbal_dominant_mode(config: Mapping[str, Any]) -> int:
+    """Require an explicit number of VBAL modes consistent with the vertical grid."""
+    vbal = section(config, "vbal")
+    mesh = section(config, "mesh")
+    raw = vbal.get("dominant_mode")
+    nlevels = mesh.get("nvertlevels")
+    if isinstance(nlevels, bool) or not isinstance(nlevels, int) or nlevels <= 0:
+        raise ConfigurationError("Defina mesh.nvertlevels como inteiro positivo.")
+    if isinstance(raw, bool) or not isinstance(raw, int) or not 1 <= raw <= nlevels:
+        raise ConfigurationError(
+            "Defina vbal.dominant_mode explicitamente como inteiro entre 1 e "
+            f"mesh.nvertlevels ({nlevels}); não reutilize automaticamente o valor do tutorial."
+        )
+    return raw
+
+
 def bflow_product(config: Mapping[str, Any], name: str) -> str:
     """Return a configured BFLOW product filename.
 

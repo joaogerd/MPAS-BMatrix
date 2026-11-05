@@ -22,7 +22,7 @@ that directory to create an experiment at another resolution or period.
 The matching MPAS forecasts are prepared with the corresponding
 [MPASWF testcase](https://github.com/joaogerd/mpaswf/tree/main/testcase/tutorial-240km).
 
-See the [case-independence audit](docs/case-independence-audit.md) for residual
+See the [second deep audit](docs/second-genericity-audit.md) for remaining scientific-output naming and sample-provenance constraints, along with verified geometry/rank/level fixes. The earlier [case-independence audit](docs/case-independence-audit.md) for residual
 intentional NMC constraints, backward-compatibility allowances and CI scope.
 
 ## Scope

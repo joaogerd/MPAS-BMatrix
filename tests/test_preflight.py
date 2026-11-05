@@ -272,3 +272,20 @@ def test_preflight_reports_invalid_case_streams_xml(tmp_path: Path) -> None:
     checks = {item["name"]: item for item in preflight_payload(config)["checks"]}
     assert checks["static.streams"]["status"] == "INVALID"
     assert "XML" in checks["static.streams"]["detail"]
+
+
+def test_preflight_rejects_implicit_vbal_modes_and_nicas_impulse_level(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    config["mesh"]["nvertlevels"] = 12
+    config["vbal"] = {"sampling": {"reduced levels": 12}}
+    config["nicas"] = {"dirac_points": [
+        {"longitude": 10.0, "latitude": 20.0, "variable": "surface_pressure"}
+    ]}
+    failures = {item["name"]: item for item in preflight_payload(config)["checks"] if not item["ok"]}
+    assert failures["vbal.dominant_mode"]["status"] == "NOT_CONFIGURED"
+    assert failures["nicas.dirac_level_from_top"]["status"] == "NOT_CONFIGURED"
+    config["vbal"]["dominant_mode"] = 20
+    config["nicas"]["dirac_level_from_top"] = 20
+    failures = {item["name"]: item for item in preflight_payload(config)["checks"] if not item["ok"]}
+    assert failures["vbal.dominant_mode"]["status"] == "INVALID"
+    assert failures["nicas.dirac_level_from_top"]["status"] == "INVALID"

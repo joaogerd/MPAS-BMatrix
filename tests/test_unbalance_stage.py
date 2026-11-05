@@ -15,7 +15,7 @@ from bmatrix.unbalance_core.model import unbalance_exe
 def _config(tmp_path: Path) -> dict[str, object]:
     return {
         "project": {"work_root": str(tmp_path / "work"), "project_root": str(tmp_path)},
-        "mesh": {"name": "x1.test", "grid": str(tmp_path / "mesh.nc"), "nproc": 128},
+        "mesh": {"name": "x1.test", "grid": str(tmp_path / "mesh.nc"), "nproc": 128, "nvertlevels": 55},
         "install": {"root": str(tmp_path / "install")},
         "bflow": {"products": {"perturbation": "PTB_f48mf24.nc"}},
         "controls": [
