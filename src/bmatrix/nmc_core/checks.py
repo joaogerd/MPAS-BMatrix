@@ -12,6 +12,7 @@ import netCDF4
 
 from .manifest import ManifestError, read_manifest
 from ..bflow_core.model import nmc_leads
+from ..errors import ConfigurationError
 from .model import MINIMUM_PAIRS, NMCManifestPair, parse_time
 
 
@@ -334,7 +335,7 @@ def validate_scientific_pairs(
     """Validate NetCDF structure, valid time and pairwise mesh compatibility."""
     try:
         older, newer = nmc_leads(config)
-    except (ValueError, KeyError, TypeError) as exc:
+    except (ValueError, KeyError, TypeError, ConfigurationError) as exc:
         raise ManifestError(
             "Configure bflow.nmc.older_lead_hours e bflow.nmc.newer_lead_hours "
             "no contrato científico para validar o manifesto NMC."
