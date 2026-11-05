@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
+import hashlib
 from typing import Literal, Mapping
 
 from .bflow_core.manifest import read_manifest
@@ -153,7 +154,14 @@ def _pairs_from_request(config: Mapping[str, object], request: BuildRequest) -> 
         pairs = read_manifest(request.manifest)
         if not pairs:
             raise WorkflowError("Manifesto BFLOW/NMC não contém pares.")
-        workspace = request.bflow_workspace or default_workspace(config, pairs[0].valid_time, pairs[-1].valid_time)
+        if request.bflow_workspace:
+            workspace = request.bflow_workspace
+        else:
+            root = default_workspace(config, pairs[0].valid_time, pairs[-1].valid_time)
+            # Two manifests can share first/last dates but differ in intermediate
+            # dates or input paths. They must never share one BFLOW workspace.
+            digest = hashlib.sha256(Path(request.manifest).read_bytes()).hexdigest()[:16]
+            workspace = root.with_name(f"{root.name}_source-{digest}")
         return pairs, Path(workspace)
     if not request.start_valid_time or not request.end_valid_time:
         if request.bflow_workspace:
