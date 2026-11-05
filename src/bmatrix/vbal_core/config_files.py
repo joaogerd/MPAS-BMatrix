@@ -12,6 +12,7 @@ from ..scientific_config import (
     normalize_control,
     ordered_control_file_names,
     section,
+    vbal_dominant_mode,
 )
 from ..shell import write_text
 from .model import toolbox_exe
@@ -89,7 +90,7 @@ def write_vbal_yaml(config: Mapping[str, Any], path: str | Path, nmembers: int, 
                         "vertical balance": {
                             "vbal": render_vbal_relations(config),
                             "pseudo inverse": bool(vbal.get("pseudo_inverse", True)),
-                            "dominant mode": int(vbal.get("dominant_mode", 20)),
+                            "dominant mode": vbal_dominant_mode(config),
                         },
                     },
                 }
