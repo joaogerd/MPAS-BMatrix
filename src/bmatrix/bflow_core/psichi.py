@@ -10,6 +10,7 @@ import numpy as np
 
 from ..errors import ArtifactError, ConfigurationError
 from .external import require_files
+from .dimensions import read_wind_level_cell, write_wind_level_cell
 from .model import BflowPair, compact_time, product_name
 from .weights import apply_esmf_weights, load_esmf_sparse_weights, weight_paths
 
@@ -97,7 +98,9 @@ def write_full_file(
             if name not in dataset.variables:
                 raise ArtifactError(f"Variável ausente no template: {name}")
             variable = dataset.variables[name]
-            variable[0, :, :] = (data * float(metadata.get("scale", 1.0)) * radius_ratio).T
+            write_wind_level_cell(
+                variable, data * float(metadata.get("scale", 1.0)) * radius_ratio
+            )
             variable.setncattr("long_name", str(metadata.get("long_name", key)))
             variable.setncattr("units", str(metadata.get("units", "m^2 s^(-2)")))
             variable.setncattr("bflow_python_backend", "windspharm_esmf_sparse_weights")
@@ -122,8 +125,13 @@ def convert_file(
     with netCDF4.Dataset(input_path) as dataset:
         if zonal not in dataset.variables or meridional not in dataset.variables:
             raise ArtifactError(f"Campos de vento ausentes em {input_path}: {zonal}, {meridional}")
-        u_cell = np.asarray(dataset.variables[zonal][0, :, :], dtype=np.float64).T
-        v_cell = np.asarray(dataset.variables[meridional][0, :, :], dtype=np.float64).T
+        u_cell = read_wind_level_cell(dataset.variables[zonal])
+        v_cell = read_wind_level_cell(dataset.variables[meridional])
+        if u_cell.shape != v_cell.shape:
+            raise ArtifactError(
+                f"Os campos de vento da previsão {input_path} têm dimensões "
+                f"incompatíveis: {zonal}={u_cell.shape}, {meridional}={v_cell.shape}."
+            )
     u_latlon = _flat_to_latlon(apply_esmf_weights(u_cell, mpas_to_latlon_weights), nlat, nlon)
     v_latlon = _flat_to_latlon(apply_esmf_weights(v_cell, mpas_to_latlon_weights), nlat, nlon)
     psi_latlon, chi_latlon = uv_to_psichi_windspharm(u_latlon, v_latlon)
