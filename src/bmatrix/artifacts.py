@@ -98,6 +98,30 @@ def read_manifest(workspace: str | Path, *, expected_stage: str | None = None) -
     return manifest
 
 
+def _science_settings_digest(config: Mapping[str, object]) -> str:
+    """Hash configured scientific choices independent of the data/plot filesystem."""
+    import hashlib
+
+    scientific_sections = (
+        "mesh", "static", "bflow", "controls", "vbal", "hdiag",
+        "nicas", "single_observation", "dirac", "unbalance", "runtime",
+    )
+    settings = {name: config.get(name) for name in scientific_sections}
+    static = config.get("static")
+    if isinstance(static, Mapping):
+        source_files: dict[str, str] = {}
+        for name in ("namelist", "streams"):
+            raw = static.get(name)
+            if isinstance(raw, str):
+                path = Path(raw).expanduser()
+                if path.is_file():
+                    source_files[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        settings["static_input_content"] = source_files
+    return hashlib.sha256(
+        json.dumps(settings, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+
+
 def scientific_identity(config: Mapping[str, object]) -> dict[str, object]:
     """Build the case identity that reusable B-matrix artifacts must preserve."""
     import hashlib
@@ -132,11 +156,12 @@ def scientific_identity(config: Mapping[str, object]) -> dict[str, object]:
         return digest.hexdigest()
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "mesh_name": name,
         "nvertlevels": nvert,
         "horizontal_geometry_sha256": fingerprint(Path(grid).expanduser(), ("latCell", "lonCell")),
         "vertical_geometry_sha256": fingerprint(Path(invariant).expanduser(), ("zgrid",)),
+        "scientific_settings_sha256": _science_settings_digest(config),
     }
 
 
@@ -145,9 +170,27 @@ def require_scientific_identity(
     expected: Mapping[str, object],
 ) -> None:
     """Reject an upstream stage produced for a different scientific grid."""
+    import warnings
+
     actual = manifest.metadata.get("scientific_identity")
-    if actual != dict(expected):
-        raise ArtifactError(
-            f"Scientific identity mismatch in {manifest.stage} manifest: "
-            f"actual={actual!r}, expected={dict(expected)!r}."
-        )
+    if actual == dict(expected):
+        return
+    # Older stages stored verified geometry but not a scientific-settings digest.
+    # Continue accepting them with a warning, without falsely claiming
+    # that their covariance configuration has been verified.
+    if isinstance(actual, Mapping) and actual.get("schema_version") == 1:
+        keys = ("mesh_name", "nvertlevels",
+                "horizontal_geometry_sha256", "vertical_geometry_sha256")
+        if all(actual.get(key) == expected.get(key) for key in keys):
+            warnings.warn(
+                "This BMatrix workspace has an older geometry-only scientific identity. "
+                "Its scientific settings cannot be verified against the current YAML. "
+                "Rebuild the covariance stages in a fresh workspace for full provenance.",
+                FutureWarning, stacklevel=2,
+            )
+            return
+    raise ArtifactError(
+        f"Scientific identity mismatch in {manifest.stage} manifest: "
+        "the mesh, vertical geometry, MPI decomposition, or scientific configuration "
+        "does not match this case. Use a separate workspace or rerun the affected stages."
+    )
