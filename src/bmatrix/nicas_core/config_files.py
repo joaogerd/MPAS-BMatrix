@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs, configured_mpi_ranks
 from ..scientific_config import control_file_names, normalize_control, section
 from ..shell import write_text
 from ..vbal_core.model import toolbox_exe
@@ -84,7 +84,7 @@ def write_nicas_yaml(
 def write_nicas_pbs(config: Mapping[str, Any], run_dir: str | Path, variable: str) -> None:
     """Write a consistent PBS job for a per-variable NICAS calibration."""
     directory = Path(run_dir)
-    ranks = int(config["mesh"].get("nproc", config.get("pbs", {}).get("nproc", 1)))
+    ranks = configured_mpi_ranks(config)
     spec = bmatrix_job_spec(
         config,
         name=f"NICAS_{variable}",
@@ -100,7 +100,7 @@ def write_nicas_merge_files(config: Mapping[str, Any], workspace: str | Path) ->
     merge_dir = root / "merge"
     merge_dir.mkdir(parents=True, exist_ok=True)
     variables = control_file_names(config)
-    ranks = int(config["mesh"].get("nproc", config.get("pbs", {}).get("nproc", 1)))
+    ranks = configured_mpi_ranks(config)
     padded = f"{ranks:06d}"
 
     for rank in range(1, ranks + 1):
