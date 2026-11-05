@@ -41,8 +41,23 @@ def write_nicas_yaml(
 ) -> None:
     """Render one single-variable NICAS calibration input."""
     nicas = section(config, "nicas")
-    level_from_top = int(nicas.get("dirac_level_from_top", 20))
-    level = 1 if variable == "surface_pressure" else max(1, nvertlevels - level_from_top + 1)
+    if isinstance(nvertlevels, bool) or not isinstance(nvertlevels, int) or nvertlevels < 1:
+        raise ValueError("mesh.nvertlevels deve ser um inteiro positivo.")
+    raw_level = nicas.get("dirac_level_from_top")
+    if raw_level is None:
+        if nicas.get("dirac_points"):
+            raise ValueError(
+                "Configure nicas.dirac_level_from_top para os testes de impulso NICAS. "
+                "Escolha um nível válido para a malha; não existe nível padrão universal."
+            )
+        level_from_top = 1  # Unused if no impulse locations are configured.
+    else:
+        if isinstance(raw_level, bool) or not isinstance(raw_level, int) or not (1 <= raw_level <= nvertlevels):
+            raise ValueError(
+                f"nicas.dirac_level_from_top deve estar entre 1 e mesh.nvertlevels ({nvertlevels})."
+            )
+        level_from_top = raw_level
+    level = 1 if variable == "surface_pressure" else nvertlevels - level_from_top + 1
     data = {
         "geometry": {
             "nml_file": "./namelist.atmosphere",
