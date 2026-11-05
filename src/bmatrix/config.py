@@ -243,6 +243,20 @@ def validate_config_shape(config: Mapping[str, Any]) -> None:
         if not isinstance(bflow.get(key), Mapping):
             raise ConfigurationError(f"bflow.{key} deve ser um bloco YAML.")
 
+    # This is an explicit product ABI, not a free scientific filename option:
+    # stage checkers, plotters and final SABER artifacts still use mpas*.nc.
+    for stage in ("vbal", "hdiag", "nicas"):
+        settings = config.get(stage)
+        if isinstance(settings, Mapping):
+            prefix = settings.get("files_prefix", "mpas")
+            if prefix != "mpas":
+                raise ConfigurationError(
+                    f"{stage}.files_prefix={prefix!r} não é suportado nesta versão. "
+                    "Os produtos finais e consumidores ainda usam nomes mpas*.nc. "
+                    "Mantenha files_prefix: mpas até que o contrato de nomes dos "
+                    "produtos seja parametrizado em todas as etapas."
+                )
+
 
 def runtime_contract(config: Mapping[str, Any]) -> dict[str, Any]:
     """Load the MONAN-JEDI ecosystem contract v2 from install.root.
