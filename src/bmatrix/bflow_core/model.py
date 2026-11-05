@@ -89,11 +89,16 @@ def nmc_leads(config: Mapping[str, object]) -> tuple[int, int]:
     nmc = bflow_settings(config).get("nmc")
     if not isinstance(nmc, Mapping):
         raise ConfigurationError("bflow.nmc deve ser um bloco YAML.")
-    try:
-        older = int(nmc["older_lead_hours"])
-        newer = int(nmc["newer_lead_hours"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ConfigurationError("bflow.nmc deve definir older_lead_hours e newer_lead_hours.") from exc
+    older = nmc.get("older_lead_hours")
+    newer = nmc.get("newer_lead_hours")
+    if any(
+        isinstance(lead, bool) or not isinstance(lead, int)
+        for lead in (older, newer)
+    ):
+        raise ConfigurationError(
+            "Declare bflow.nmc.older_lead_hours e bflow.nmc.newer_lead_hours "
+            "como horas inteiras positivas no YAML científico."
+        )
     if older <= newer or newer <= 0:
         raise ConfigurationError("bflow.nmc requer older_lead_hours > newer_lead_hours > 0.")
     return older, newer
