@@ -66,3 +66,25 @@ def test_invalid_generated_observation_file_does_not_fall_back_silently(tmp_path
     _case(tmp_path, "../other-case/accidental.h5")
     with pytest.raises(ValueError, match="diretório de execução"):
         expected_observation_files(tmp_path)
+
+
+def test_custom_so_variant_uses_case_configuration(tmp_path: Path):
+    from bmatrix.so_core.model import so_artifacts
+
+    artifacts = so_artifacts("humidity_test")
+    assert artifacts["yaml"] == "run_SO_humidity_test.yaml"
+    selected = tmp_path / artifacts["yaml"]
+    selected.write_text(yaml.safe_dump({
+        "observations": {
+            "observers": [{
+                "obs space": {
+                    "obsdataout": {"engine": {"obsfile": "./custom_humidity.h5"}}
+                }
+            }]
+        }
+    }))
+    assert expected_observation_files(tmp_path, "humidity_test") == [
+        "custom_humidity.h5"
+    ]
+    with pytest.raises(ValueError, match="nome da variante SO"):
+        so_artifacts("../../bad")
