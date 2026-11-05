@@ -15,11 +15,25 @@ TIME_FORMAT = "%Y-%m-%d_%H:%M:%S"
 
 @dataclass(frozen=True, slots=True)
 class BflowPair:
-    """One pair of equal-valid-time f048/f024 MPAS outputs."""
+    """One equal-valid-time NMC pair with explicit longer/shorter lead hours.
+
+    Historical f048/f024 field names are API-compatibility aliases; generic
+    scientific code uses older/newer and their actual lead durations.
+    """
 
     valid_time: str
     f048: Path
     f024: Path
+    older_lead_hours: int = 48
+    newer_lead_hours: int = 24
+
+    @property
+    def older(self) -> Path:
+        return self.f048
+
+    @property
+    def newer(self) -> Path:
+        return self.f024
 
 
 def parse_time(value: str) -> datetime:
@@ -135,6 +149,8 @@ def build_pairs_from_range(
                 valid_time=valid_time,
                 f048=bflow_file(config, old_init, older_lead, dt),
                 f024=bflow_file(config, new_init, newer_lead, dt),
+                older_lead_hours=older_lead,
+                newer_lead_hours=newer_lead,
             )
         )
     return pairs
