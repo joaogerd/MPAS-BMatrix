@@ -8,7 +8,7 @@ from typing import Any, Mapping
 import yaml
 
 from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs, configured_mpi_ranks
-from ..scientific_config import control_file_names, normalize_control, section
+from ..scientific_config import control_file_names, normalize_control, section, controls
 from ..shell import write_text
 from ..vbal_core.model import toolbox_exe
 
@@ -57,7 +57,18 @@ def write_nicas_yaml(
                 f"nicas.dirac_level_from_top deve estar entre 1 e mesh.nvertlevels ({nvertlevels})."
             )
         level_from_top = raw_level
-    level = 1 if variable == "surface_pressure" else nvertlevels - level_from_top + 1
+    matched = [item for item in controls(config) if str(item["file"]) == variable]
+    if len(matched) != 1:
+        raise ValueError(
+            f"Declare o controle {variable!r} uma única vez em controls, incluindo dimensions: 2d ou 3d."
+        )
+    dimensions = str(matched[0].get("dimensions", "")).lower()
+    if dimensions not in {"2d", "3d"}:
+        raise ValueError(
+            f"Defina controls[].dimensions: 2d ou 3d para {variable!r}. "
+            "O nível NICAS depende das dimensões científicas, não do nome da variável."
+        )
+    level = 1 if dimensions == "2d" else nvertlevels - level_from_top + 1
     data = {
         "geometry": {
             "nml_file": "./namelist.atmosphere",
