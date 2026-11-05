@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from ..shell import require_file
 from ..vbal_core.model import covariance_root
 
+# Historical names are examples; real variants belong to the case YAML.
 SO_VARIANTS = ("default", "t-only", "u-only")
 
 
@@ -21,8 +23,12 @@ def variational_exe(config) -> Path:
 
 def so_artifacts(variant: str) -> dict[str, str]:
     """Return file names owned by one supported SO variant."""
-    if variant not in SO_VARIANTS:
-        raise ValueError(f"Variante SO inválida: {variant}; use {', '.join(SO_VARIANTS)}.")
+    if not isinstance(variant, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", variant):
+        raise ValueError(
+            "O nome da variante SO deve conter somente letras minúsculas, "
+            "números, hífens e sublinhados, começando por letra ou número. "
+            "Declare a variante em single_observation.variants no YAML."
+        )
     suffix = "" if variant == "default" else f"_{variant.replace('-', '_')}"
     return {
         "yaml": f"run_SO{suffix}.yaml",
