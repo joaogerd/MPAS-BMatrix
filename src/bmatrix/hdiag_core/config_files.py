@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs
+from ..scheduler import bmatrix_job_spec, mpi_command, render_pbs, configured_mpi_ranks
 from ..scientific_config import bflow_sample_stem, control_file_names, normalize_control, section
 from ..shell import write_text
 from ..vbal_core.config_files import render_vbal_relations
@@ -147,7 +147,7 @@ def write_hdiag_yaml(config: Mapping[str, Any], path: str | Path, nmembers: int,
 def write_hdiag_pbs(config: Mapping[str, Any], run_dir: str | Path) -> None:
     """Write the standardized PBS job for HDIAG."""
     directory = Path(run_dir)
-    ranks = int(config["mesh"].get("nproc", config.get("pbs", {}).get("nproc", 1)))
+    ranks = configured_mpi_ranks(config)
     spec = bmatrix_job_spec(
         config,
         name="mpasjediBTrainingHDIAG",
